@@ -1,6 +1,6 @@
 
 """
-    process_dsp(dsp_config::DSPConfig, data::LegendData, period::DataPeriod, run::DataRun, category::Symbol, channel::ChannelId; reprocess::Bool = false)
+    process_dsp(dsp_config::DSPConfig, data::LegendData, period::DataPeriod, run::DataRun, category::Symbol, channel::ChannelId; reprocess::Bool = false, , dsp_config::DSPConfig = DSPConfig(data.metadata.config.dsp.dsp_config.default))
 - run the DSP processing for all raw files in the given period, run, category and channel.
 - based on "simple_dsp" function
 - save the results in the jldsp tier
@@ -12,18 +12,17 @@ INPUTS:
     - `category::Symbol` data category, e.g. `DataCategory(:cal)`
     - `channel::ChannelId` channel id, e.g. `ChannelId(1)` (depending on your data!)
     - `reprocess::Bool` reprocess the files or not
+    - `dsp_config::DSPConfig` DSP configuration object. If not specified will take default from metadata
 OUTPUTS:
     - save the DSP results in the jldsp tier
     - print the progress
     - print the completion message
 """
-function process_dsp(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; pars_filter::PropDict = PropDict(), reprocess::Bool = false)
-    dsp_config = DSPConfig(data.metadata.config.dsp.dsp_config.default)
-
+function process_dsp(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; 
+                        reprocess::Bool = false, dsp_config::DSPConfig = DSPConfig(data.metadata.config.dsp.dsp_config.default))                
+    @info "Start DSP processing for period $period, run $run, channel $channel"
     filekeys = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])
     dsp_folder =  data.tier[DataTier(:jldsp), category , period, run] * "/"
-    τ_pz = mvalue(data.par.rpars.pz[period, run, channel].τ)
-
     if reprocess == false
         dsp_files = dsp_folder .* string.(filekeys) .* "-tier_jldsp.lh5"
         if sum(isfile.(dsp_files)) == length(filekeys)
@@ -35,6 +34,9 @@ function process_dsp(data::LegendData, period::DataPeriod, run::DataRun, categor
         end
         filekeys = filekeys[.!isfile.(dsp_files)]
     end
+
+    τ_pz = mvalue(data.par.rpars.pz[period, run, channel].τ)
+    pars_filter = data.par.rpars.fltopt[period,run,channel]
 
     # Threads.@threads 
     for f in eachindex(filekeys) 

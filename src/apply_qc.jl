@@ -40,10 +40,17 @@ function apply_qc(dsp_par::Union{PropDict, Table}, config_qc::PropDict)
         
         wvf_keep_all = wvf_keep_all .& wvf_keep_tmp
         wvf_keep = merge(wvf_keep, NamedTuple{(Symbol(par),)}((wvf_keep_tmp, )))
-        qc_surv[par] = Dict(:min => qc_surv_min, :max => qc_surv_max, :absmax => qc_surv_absmax, :absmin => qc_surv_absmin)
+        qc_surv[par] = Dict(:all => qc_surv_min * qc_surv_max * qc_surv_absmax * qc_surv_absmin, :min => qc_surv_min, :max => qc_surv_max, :absmax => qc_surv_absmax, :absmin => qc_surv_absmin)
     end
     qc_surv["all"] = sum(wvf_keep_all)/length(wvf_keep_all)
-    wvf_keep = merge(wvf_keep, (all = wvf_keep_all,) )
+
+    # finite e trap as very basic qc
+    e_trap = ustrip.(getproperty(dsp_par, :e_trap))
+    wvf_keep_finite = isfinite.(e_trap)
+    qc_surv["finite"] = sum(wvf_keep_finite)/length(wvf_keep_finite)
+
+    wvf_keep = merge(wvf_keep, (all = wvf_keep_all, finite = wvf_keep_finite) )
     cuts = PropDict(Dict(:qc_surv => qc_surv, :wvf_keep => wvf_keep))
-    return cuts
+    cuts_minimal = PropDict(Dict(:qc_surv => cuts.qc_surv.all, :wvf_keep => cuts.wvf_keep.all))
+    return cuts, cuts_minimal
 end 

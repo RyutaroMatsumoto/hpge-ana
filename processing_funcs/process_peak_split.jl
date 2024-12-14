@@ -1,4 +1,24 @@
-function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; reprocess::Bool = false)
+"""
+    process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; reprocess::Bool = false)
+Create peak files containting only waveforms from peaks in the calibration spectrum.
+1. Read raw data
+2. Find peaks in the calibration spectrum using rough energy estimate `data_ch.daqenergy`
+3. Do simple DSP for peaks only 
+4. apply quality cuts based on simple DSP
+5. Save waveforms after QC to peak files
+Input:
+- data: LegendData object
+- period: DataPeriod object
+- run: DataRun object
+- category: Symbol or DataCategory object, e.g. :cal for calibration 
+channel: ChannelId for germanium detector 
+reprocess: Bool, default is false
+Output:
+- peak files containting only waveforms from peaks in the calibration spectrum
+"""
+function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; 
+                        source::Symbol = :co60, reprocess::Bool = false)
+   
     ecal_config = data.metadata.config.energy.energy_config.default
     dsp_config = DSPConfig(data.metadata.config.dsp.dsp_config.default)
     qc_config = data.metadata.config.qc.qc_config.default
@@ -46,6 +66,7 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
         # save
         if !ispath(peak_folder)
             mkpath(peak_folder)
+            @info "create path: $peak_folder"
         end
 
         fid = lh5open(peak_file, "w") 

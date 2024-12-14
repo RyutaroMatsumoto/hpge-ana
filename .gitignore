@@ -47,3 +47,6 @@ docs/site/
 
 # OS generated files
 **/*.DS_Store
+
+# local files and folders 
+local*
