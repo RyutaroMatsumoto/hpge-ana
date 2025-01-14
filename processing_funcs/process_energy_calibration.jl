@@ -16,8 +16,8 @@ OUTPUT:
 - save the calibration parameters as json files to disk (in generated/par/rpars/ecal/...) 
 - save the calibration plots to disk (in generated/jlplt/rplt/...)
 """
-function process_energy_calibration(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId, source::Symbol;
-        reprocess::Bool = true, ecal_config::PropDict = data.metadata.config.energy.energy_config.default, e_types::Vector{<:Symbol} = [:e_trap, :e_cusp, :e_zac])
+function process_energy_calibration(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId;
+        reprocess::Bool = true, ecal_config::PropDict = data.metadata.config.energy.energy_config.default, source::Symbol = Symbol(ecal_config.source), e_types::Vector{<:Symbol} = [:e_trap, :e_cusp, :e_zac])
 
     if !reprocess && all([haskey(data.par.rpars.ecal[period, run, channel], e_type) for e_type in e_types])
         @info "Energy calibration already exists for all $(e_types)  -> you're done!"
@@ -59,7 +59,13 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
         e_uncal_func = "$e_type"
 
         # do simple calibration and plot 
-        result_simple, report_simple = simple_calibration(e_uncal, gamma_lines , left_window_sizes, right_window_sizes,; calib_type = calib_type,  n_bins=ecal_config.n_bins, quantile_perc=NaN, binning_peak_window=ecal_config.binning_peak_window);
+        result_simple, report_simple = simple_calibration(e_uncal, gamma_lines , left_window_sizes, right_window_sizes,; 
+                    calib_type = calib_type, binning_peak_window=ecal_config.binning_peak_window, quantile_perc=NaN, 
+                    peak_quantile= ecal_config.left_peak_quantile..ecal_config.right_peak_quantile, 
+                    bin_quantile = ecal_config.left_bin_quantile..ecal_config.right_bin_quantile, 
+                    peakfinder_threshold = ecal_config.peakfinder_threshold, 
+                    peakfinder_σ = ecal_config.peakfinder_σ);
+
         m_cal_simple = result_simple.c
         Plots_theme(; fs = fs, grid = :on)
         p = plot(report_simple, right_margin=4mm, top_margin = 0mm, yformatter=:plain, thickness_scaling=1.5, cal=true,  size = (620, 400))
