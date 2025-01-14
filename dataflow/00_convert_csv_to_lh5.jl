@@ -1,4 +1,3 @@
-relPath = relpath(split(@__DIR__, "main")[1], @__DIR__)
 using LegendDataManagement
 using LegendDataManagement: readlprops
 using LegendDataManagement.LDMUtils
@@ -10,10 +9,13 @@ using IntervalSets
 using Unitful
 using TypedTables
 using RadiationDetectorDSP
-include("$(@__DIR__)/$relPath/utils/utils_IO.jl")
+using RadiationDetectorSignals
+include("$(@__DIR__)/../utils/utils_IO.jl")
+
+ENV["LEGEND_DATA_CONFIG"] = "/global/cfs/projectdirs/m2676/data/teststands/lbnl/ppc01/config.json"
 
 # inputs
-asic = LegendData(:l1k65n)
+asic = LegendData(:ppc01)
 period = DataPeriod(1)
 run = DataRun(1)
 channel = ChannelId(1)

@@ -14,7 +14,7 @@ using Plots
 using Unitful, Measures
 using Measurements: value as mvalue
 # set data configuration (where to find data; and where to save results)
-ENV["LEGEND_DATA_CONFIG"] = "/global/cfs/projectdirs/m2676/data/teststands/lbnl/l1k65n/config.json"
+ENV["LEGEND_DATA_CONFIG"] = "/global/cfs/projectdirs/m2676/data/teststands/lbnl/ppc01/config.json"
 
 # include relevant functions 
 include("$(@__DIR__)/../utils/utils_aux.jl")
@@ -23,7 +23,7 @@ include("$(@__DIR__)/../processing_funcs/process_hit.jl")
 
 # inputs
 reprocess = true
-asic = LegendData(:l1k65n)
+asic = LegendData(:ppc01)
 period = DataPeriod(1)
 run = DataRun(1)
 channel = ChannelId(1)
