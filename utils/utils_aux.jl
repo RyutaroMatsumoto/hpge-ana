@@ -19,13 +19,13 @@ function _quantile_truncfit(x::Matrix; qmin::T= 0.02, qmax::T = 0.98) where T<:R
    minimum(filter(isfinite, xmins)), maximum(filter(isfinite, xmaxs))
 end
 
-function channel2detector(data::LegendData, channel::ChannelId)
+function _channel2detector(data::LegendData, channel::ChannelId)
     detectors = [DetectorId(Symbol(data.metadata.hardware.detectors.germanium[k].name)) for k in keys(data.metadata.hardware.detectors.germanium)]
     channels   = [ChannelId(data.metadata.hardware.detectors.germanium[k].channel) for k in keys(data.metadata.hardware.detectors.germanium)]
     detectors[findfirst(x -> x== channel, channels)]
 end
 
-function detector2channel(data::LegendData, detector::DetectorId)
+function _detector2channel(data::LegendData, detector::DetectorId)
     detectors = [DetectorId(Symbol(data.metadata.hardware.detectors.germanium[k].name)) for k in keys(data.metadata.hardware.detectors.germanium)]
     channels = [ChannelId(data.metadata.hardware.detectors.germanium[k].channel) for k in keys(data.metadata.hardware.detectors.germanium)]
     channels[findfirst(x -> x== detector, detectors)]

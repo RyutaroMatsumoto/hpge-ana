@@ -70,7 +70,7 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
         Plots_theme(; fs = fs, grid = :on)
         p = plot(report_simple, right_margin=4mm, top_margin = 0mm, yformatter=:plain, thickness_scaling=1.5, cal=true,  size = (620, 400))
         filekey = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])[1]
-        title!(p, get_plottitle(filekey, channel2detector(data, channel), "Simple Calibration"; additiional_type=string(e_type)), titlefontsize = 7)
+        title!(p, get_plottitle(filekey, _channel2detector(data, channel), "Simple Calibration"; additiional_type=string(e_type)), titlefontsize = 7)
         plt_simple = savelfig(savefig, p, data, filekey, channel, Symbol("simple_calibration_$(e_type)"))
         @info "Save simple calibration plot to $(plt_simple)"
 
@@ -80,7 +80,7 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
                                     e_unit=result_simple.unit, calib_type=:th228, fit_func = fit_funcs, m_cal_simple=m_cal_simple)
         Plots_theme(; fs = fs+2, grid = :off)
         p = plot(broadcast(k -> plot(report_fit[k], left_margin=2mm, right_margin=2mm, top_margin=-5mm, bottom_margin=-2mm, title=string(k), ms=2), keys(report_fit))..., layout=(length(report_fit), 1), size=(1000,710*length(report_fit)) , thickness_scaling=1.8, titlefontsize = 10, legendfontsize = 8, yguidefontsize = 9, xguidefontsize=11)
-        plot!(p, plot_title=get_plottitle(filekey, channel2detector(data, channel), "Peak Fits"; additiional_type=string(e_type)), plot_titlelocation=(0.5,0.2), plot_titlefontsize = 12)
+        plot!(p, plot_title=get_plottitle(filekey, _channel2detector(data, channel), "Peak Fits"; additiional_type=string(e_type)), plot_titlelocation=(0.5,0.2), plot_titlefontsize = 12)
         plt_peaks = savelfig(savefig, p, data, filekey, channel , Symbol("peak_fits_$(e_type)"))
         @info "Save peak fits plot to $(plt_peaks)"
 
@@ -100,7 +100,7 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
             p = plot(report_calib, xerrscaling=100, additional_pts=(μ = μ_notfit, peaks = pp_notfit))
         end
         plot!(p, thickness_scaling = 1.5, legend = :topleft,  ylabel = "Energy (a.u.)")
-        plot!(plot_title=get_plottitle(filekey, channel2detector(data, channel), " Calibration Curve"; additiional_type=string(e_type)), plot_titlelocation=(0.5,0.3), plot_titlefontsize=7)
+        plot!(plot_title=get_plottitle(filekey, _channel2detector(data, channel), " Calibration Curve"; additiional_type=string(e_type)), plot_titlelocation=(0.5,0.3), plot_titlefontsize=7)
         pcal = savelfig(savefig, p, data, filekey, channel, Symbol("calibration_curve_$(e_type)"))
         @info "Save calibration curve plot to $(pcal)"
 
@@ -120,7 +120,7 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
             p = plot(report_fwhm, additional_pts=(peaks = pp_notfit, fwhm = fwhm_notfit))
         end 
         plot!(p, thickness_scaling = 1.5, xticks = 0:500:3000, legend = :bottomright, xlabel = "Energy (keV)", right_margin = 3mm)
-        plot!(plot_title=get_plottitle(filekey, channel2detector(data, channel), "FWHM"; additiional_type=string(e_type)), plot_titlelocation=(0.5,0.3), plot_titlefontsize=8)
+        plot!(plot_title=get_plottitle(filekey, _channel2detector(data, channel), "FWHM"; additiional_type=string(e_type)), plot_titlelocation=(0.5,0.3), plot_titlefontsize=8)
         savelfig(savefig, p, data, filekey, channel, Symbol("fwhm_$(e_type)"))
 
         # calibrate best fit values using energy calibration curve 
