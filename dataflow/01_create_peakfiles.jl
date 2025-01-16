@@ -14,7 +14,7 @@ using Unitful
 using TypedTables
 
 # set data configuration (where to find data; and where to save results)
-ENV["LEGEND_DATA_CONFIG"] = "/global/cfs/projectdirs/m2676/data/teststands/lbnl/l1k65n/config.json"
+ENV["LEGEND_DATA_CONFIG"] = "/global/cfs/projectdirs/m2676/data/teststands/lbnl/ppc01/config.json"
 
 # include relevant functions 
 include("$(@__DIR__)/../processing_funcs/process_peak_split.jl")
@@ -22,7 +22,7 @@ include("$(@__DIR__)/../src/simple_dsp.jl")
 include("$(@__DIR__)/../src/apply_qc.jl")
 
 # inputs
-asic = LegendData(:l1k65n)
+asic = LegendData(:ppc01)
 period = DataPeriod(1)
 run = DataRun(1)
 channel = ChannelId(1)
@@ -30,7 +30,7 @@ category = DataCategory(:cal)
 source = :co60
 
 # create peak files 
-process_peak_split(asic, period, run, category, channel ; source = source, reprocess = true)
+process_peak_split(asic, period, run, category, channel ; source = source, reprocess = false)
 
 # sanity check: open peak files and plot 
 peakA = read_ldata(:Co60a, asic, :jlpeaks, category, period, run, channel)

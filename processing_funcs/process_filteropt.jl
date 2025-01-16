@@ -24,7 +24,7 @@ Optional:
 """
 function process_filteropt(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId, dsp_config::DSPConfig, τ_pz::Quantity{T}, peak::Symbol; 
                 rt_opt_mode::Symbol = :bl_noise, reprocess::Bool = false, filter_types::Vector{Symbol} = [:trap, :cusp, :zac]) where T<:Real 
-    det = channel2detector(data, channel)
+    det = _channel2detector(data, channel)
     @info "Optimize filter for period $period, run $run, channel $channel /det $det - $filter_types"
 
     # check if decaytime pars already exist

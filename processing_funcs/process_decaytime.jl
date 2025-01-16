@@ -9,7 +9,7 @@ function process_decayime(data::LegendData, period::DataPeriod, run::DataRun, ca
         return
     end
 
-    det = channel2detector(data, channel)
+    det = _channel2detector(data, channel)
     @debug "Create pars db"
     mkpath(joinpath(data_path(data.par.rpars.pz), string(period)))
     
