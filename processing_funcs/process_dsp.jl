@@ -11,15 +11,22 @@ INPUTS:
     - `run::DataRun` data run, e.g. `DataRun(1)`
     - `category::Symbol` data category, e.g. `DataCategory(:cal)`
     - `channel::ChannelId` channel id, e.g. `ChannelId(1)` (depending on your data!)
+KWARGS:
     - `reprocess::Bool` reprocess the files or not
     - `dsp_config::DSPConfig` DSP configuration object. If not specified will take default from metadata
+    - `τ_pz::Quantity{<:Real}` decay time used for pole-zero correction. If not specified will take from rpars.pz
+    - `pars_filter::PropDict` optimized filter parameters used in DSP. If not specified will take from rpars.fltopt
 OUTPUTS:
     - save the DSP results in the jldsp tier
     - print the progress
     - print the completion message
 """
 function process_dsp(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; 
-                        reprocess::Bool = false, dsp_config::DSPConfig = DSPConfig(data.metadata.config.dsp.dsp_config.default))                
+                        reprocess::Bool = false, 
+                        dsp_config::DSPConfig = DSPConfig(data.metadata.config.dsp.dsp_config.default),
+                        τ_pz::Quantity{<:Real} = mvalue(data.par.rpars.pz[period, run, channel].τ),
+                        pars_filter::PropDict = data.par.rpars.fltopt[period,run,channel])  
+
     @info "Start DSP processing for period $period, run $run, channel $channel"
     filekeys = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])
     dsp_folder =  data.tier[DataTier(:jldsp), category , period, run] * "/"
@@ -34,9 +41,6 @@ function process_dsp(data::LegendData, period::DataPeriod, run::DataRun, categor
         end
         filekeys = filekeys[.!isfile.(dsp_files)]
     end
-
-    τ_pz = mvalue(data.par.rpars.pz[period, run, channel].τ)
-    pars_filter = data.par.rpars.fltopt[period,run,channel]
 
     # Threads.@threads 
     for f in eachindex(filekeys) 

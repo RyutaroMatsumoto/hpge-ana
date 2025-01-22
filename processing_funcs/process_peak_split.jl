@@ -17,13 +17,17 @@ Output:
 - peak files containting only waveforms from peaks in the calibration spectrum
 """
 function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; 
-                        source::Symbol = :co60, reprocess::Bool = false)
+                        source::Symbol = :co60, reprocess::Bool = false, 
+                        ecal_config = data.metadata.config.energy.energy_config.default,
+                        dsp_config = DSPConfig(data.metadata.config.dsp.dsp_config.default))
    
-    ecal_config = data.metadata.config.energy.energy_config.default
-    dsp_config = DSPConfig(data.metadata.config.dsp.dsp_config.default)
     qc_config = data.metadata.config.qc.qc_config.default
     filekeys = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])
     peak_folder =  asic.tier[DataTier(:jlpeaks), category , period, run] * "/"
+    if !ispath(peak_folder)
+        mkpath(peak_folder)
+        @info "create path: $peak_folder"
+    end
     peak_files = peak_folder .* string.(filekeys) .* "-tier_jlpeaks.lh5"
 
     if reprocess == false
@@ -37,6 +41,8 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
         filekeys = filekeys[.!isfile.(peak_files)]
     end
 
+    h_uncals = Vector{Histogram}(undef, length(filekeys))
+    peakpos = Vector{Vector{<:Real}}(undef, length(filekeys))
     for f in eachindex(filekeys) 
         filekey = filekeys[f]
         peak_file = peak_files[f]
@@ -57,10 +63,17 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
             left_window_sizes = ecal_config.left_window_sizes 
             right_window_sizes = ecal_config.right_window_sizes 
         end
-        nbins_def =  length(e_uncal)/10 > 100 ?  round(Int, length(e_uncal)/10) : 100
-        h_uncal = fit(Histogram, e_uncal, nbins=nbins_def)
-        _, peakpos = RadiationSpectra.peakfinder(h_uncal, σ=1.0, backgroundRemove=true, threshold=50)
-        cal_simple = mean(gamma_lines./sort(peakpos))
+        # nbins_def =  length(e_uncal)/10 > 100 ?  round(Int, length(e_uncal)/10) : 100
+        bin_width = get_friedman_diaconis_bin_width(filter(in(quantile(e_uncal, 0.1)..quantile(e_uncal, 0.9)), e_uncal))
+        nbins = ceil(Int, (maximum(e_uncal)-minimum(e_uncal))/bin_width)
+        h_uncals[f] = fit(Histogram, e_uncal, nbins=nbins)
+        _, peakpos[f] = RadiationSpectra.peakfinder(h_uncals[f], σ=ecal_config.peakfinder_σ, backgroundRemove=true, threshold=ecal_config.peakfinder_threshold)
+        if length(peakpos[f]) !== length(gamma_lines)
+            error("Number of peaks found $(length(peakpos[f])); expected gamma lines $(length(gamma_lines)) \n you could try to modify peakfinder_threshold and/or peakfinder_σ")
+        else 
+            @info "Found $(length(peakpos[f])) peaks for $filekey"
+        end 
+        cal_simple = mean(gamma_lines./sort(peakpos[f]))
         e_simplecal = e_uncal .* cal_simple
        
         # save
@@ -74,7 +87,7 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
             peakIdx = findall((gamma_lines[i] - left_window_sizes[i]) .<= e_simplecal .< (gamma_lines[i] + right_window_sizes[i]))
             # do simple dsp. only for peaks. 
             dsp_par = simple_dsp_qc(Table(waveform = wvfs[peakIdx]), dsp_config)
-            qc_cuts = apply_qc(dsp_par, qc_config)
+            qc_cuts, _ = apply_qc(dsp_par, qc_config)
             qc_flag = qc_cuts.wvf_keep.all
             qc_idx = findall(qc_flag)
             qc_surv = qc_cuts.qc_surv.all
@@ -93,4 +106,5 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
         println("peak file processing done for $filekey")
         close(fid)
     end
+    return h_uncals, peakpos 
 end

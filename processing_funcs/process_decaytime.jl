@@ -1,4 +1,4 @@
-function process_decayime(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId,
+function process_decaytime(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId,
             min_τ::Quantity{T}, max_τ::Quantity{T}, nbins::Int, rel_cut_fit::Real, peak::Symbol,
             bl_window::ClosedInterval{<:Unitful.Time{<:T}}, tail_window::ClosedInterval{<:Unitful.Time{<:T}}; reprocess::Bool = false) where T <: Real
     
@@ -24,7 +24,7 @@ function process_decayime(data::LegendData, period::DataPeriod, run::DataRun, ca
     p = plot(report, size = (600, 500), legend = :topright, xlabel = "Decay time (µs)", fillcolor = :deepskyblue2, color = :darkorange, dpi = 200)
     plot!(p, xguidefontsize = 16, yguidefontsize = 16, xtickfontsize = 12, ytickfontsize = 12, legendfontsize = 10,
                 legendforegroundcolor = :silver)
-    plot!(p, xlabel = " ", xtickfontsize = 1, bottom_margin = -6mm, ylims = (0, ylims()[2]+0.1), subplot = 1)
+    plot!(p, xlabel = " ", xtickfontsize = 1, bottom_margin = -6mm, ylims = (0, ylims()[2]+0.25*ylims()[2]), subplot = 1)
     filekey = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])[1]
     title!(p, get_plottitle(filekey, det, "Decay Time Distribution"),  subplot=1, titlefontsize = 12)
     savelfig(savefig, p, data, filekey, channel, :decay_time)
@@ -34,25 +34,26 @@ function process_decayime(data::LegendData, period::DataPeriod, run::DataRun, ca
     result_pz = (τ = result.μ, fit = result)
     writelprops(data.par.rpars.pz[period], run, PropDict("$channel" => result_pz))
     @info "Saved pars to disk"
+    display(p)
 end
-# export process_decayime
+# export process_decaytime
 
-function process_decayime(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId,
+function process_decaytime(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId,
     pz_config::PropDict, bl_window::ClosedInterval{<:Unitful.Time{<:T}}, tail_window::ClosedInterval{<:Unitful.Time{<:T}}; kwargs...) where T <: Real
    
-    process_decayime(data, period, run, category, channel, pz_config.min_tau, pz_config.max_tau, pz_config.nbins, pz_config.rel_cut_fit, Symbol(pz_config.peak), bl_window, tail_window; kwargs...)
+    process_decaytime(data, period, run, category, channel, pz_config.min_tau, pz_config.max_tau, pz_config.nbins, pz_config.rel_cut_fit, Symbol(pz_config.peak), bl_window, tail_window; kwargs...)
 end 
 
-function process_decayime(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId,
+function process_decaytime(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId,
     pz_config::PropDict, dsp_config::DSPConfig; kwargs...)
    
-    process_decayime(data, period, run, category, channel, pz_config.min_tau, pz_config.max_tau, pz_config.nbins, pz_config.rel_cut_fit, Symbol(pz_config.peak), dsp_config.bl_window, dsp_config.tail_window; kwargs...)
+    process_decaytime(data, period, run, category, channel, pz_config.min_tau, pz_config.max_tau, pz_config.nbins, pz_config.rel_cut_fit, Symbol(pz_config.peak), dsp_config.bl_window, dsp_config.tail_window; kwargs...)
 end 
 
-function process_decayime(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; 
+function process_decaytime(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; 
     pz_config::PropDict = data.metadata.config.dsp.dsp_config.pz.default, 
     dsp_config::DSPConfig = DSPConfig(data.metadata.config.dsp.dsp_config.default), kwargs...)
     # use default values for pz_config and dsp_config from metadata 
-    process_decayime(data, period, run, category, channel, pz_config.min_tau, pz_config.max_tau, pz_config.nbins, pz_config.rel_cut_fit, Symbol(pz_config.peak), dsp_config.bl_window, dsp_config.tail_window; kwargs...)
+    process_decaytime(data, period, run, category, channel, pz_config.min_tau, pz_config.max_tau, pz_config.nbins, pz_config.rel_cut_fit, Symbol(pz_config.peak), dsp_config.bl_window, dsp_config.tail_window; kwargs...)
 end 
 

@@ -15,19 +15,20 @@ using PropDicts
 using StatsBase, IntervalSets
 using Unitful
 using TypedTables
-using Plots
+using CairoMakie
 using Measures
 
-# set data configuration (where to find data; and where to save results)
 ENV["LEGEND_DATA_CONFIG"] = "/global/cfs/projectdirs/m2676/data/teststands/lbnl/ppc01/config.json"
 
 # include relevant functions 
-include("$(@__DIR__)/../processing_funcs/process_decaytime.jl")
-include("$(@__DIR__)/../utils/utils_aux.jl")
+relPath = relpath(split(@__DIR__, "hpge-ana")[1], @__DIR__) * "/hpge-ana/"
+# include relevant functions 
+include("$(@__DIR__)/$relPath/processing_funcs/process_decaytime.jl")
+include("$(@__DIR__)/$relPath/utils/utils_aux.jl")
 
 # inputs
 asic = LegendData(:ppc01)
-period = DataPeriod(1)
+period = DataPeriod(2)
 run = DataRun(1)
 channel = ChannelId(1)
 category = DataCategory(:cal)
