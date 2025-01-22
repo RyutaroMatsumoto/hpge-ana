@@ -162,8 +162,12 @@ function csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, category
     idx_start = [wpf*(i-1)+1 for i = 1:nfiles]
     idx_stop = [wpf*i for i = 1:nfiles]
     idx_stop[end] = nwvf_total
-    h5folder = data.tier[DataTier(:raw), category, period, run] * "/"
     eventnumber = collect(1:nwvf_total)
+    h5folder = data.tier[DataTier(:raw), category, period, run] * "/"
+    if !ispath(h5folder)
+        mkpath(h5folder)
+        @info "created folder: $h5folder"
+    end
 
     # create hdf5 file and write
     Threads.@threads for i = 1:nfiles
@@ -182,7 +186,7 @@ function csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, category
                 wvfs_ch2 = ArrayOfRDWaveforms(uflt_trunc.(wvfs_ch2))
             end
         end
-        h5name = h5folder * string(FileKey(:l1k65n, period, run, category, Timestamp(MetaData.timestamp[1]))) * "-tier_raw.lh5"
+        h5name = h5folder * string(FileKey(data.name, period, run, category, Timestamp(MetaData.timestamp[1]))) * "-tier_raw.lh5"
        
         fid = lh5open(h5name, "w")
         fid["$channel/raw/waveform"]  = wvfs_ch1
