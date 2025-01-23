@@ -1,8 +1,12 @@
-using HDF5
-using CSV, DataFrames
-using Unitful
-using RadiationDetectorSignals
 
+using HDF5, LegendHDF5IO
+using CSV, DataFrames
+using LegendDataManagement
+using RadiationDetectorSignals
+using RadiationDetectorDSP
+using Unitful
+using IntervalSets
+using Dates
 ## CSV conversion functions 
 """
     read_csv_metadata(filepath::String; heading::Int = 17, nChannels::Int = 2, timezone = "PT")
@@ -79,6 +83,7 @@ function read_folder_csv_oscilloscope(csv_folder::String; heading::Int = 17, nwv
         files = files[nwvfmax]
     end
 
+    @debug "Reading $(length(files)) files from $csv_folder"
     fnames = [joinpath(csv_folder, file) for file in files]
     data = [CSV.read(fname, DataFrame; delim=',', header = heading) for fname in fnames]
 
@@ -86,18 +91,19 @@ function read_folder_csv_oscilloscope(csv_folder::String; heading::Int = 17, nwv
     MetaData, timestep = read_csv_metadata(fnames[1], heading = heading, nChannels = nChannels, timezone = timezone)
 
    # SOME BASIC DATA CLEANING:
-    MvIdx = .![any(map(x-> occursin(MetaData.Ch1.Channel,x), names(df))) .&&  # good files need to have column named with a channel 
+    good_wvf = [any(map(x-> occursin(MetaData.Ch1.Channel,x), names(df))) .&&  # good files need to have column named with a channel 
             !any(ismissing.(df[!,  MetaData.Ch1.Channel])) .&& # no missing data points
             all(isfinite.(df[!, MetaData.Ch1.Channel])) for df in data] # no infinite or nan data points
-    if any(MvIdx)
-        @info "Moving $(sum(MvIdx)) waveforms to ignore folder because of: missing data points, infinite or nan data points, missing channel"
-        dst_folder = csv_folder * "ignore/"
-        if !ispath(dst_folder)
-        mkpath(dst_folder)
-        end
-        mv.(fnames[MvIdx], [joinpath(dst_folder, file) for file in files[MvIdx]])
-        fnames = fnames[.!MvIdx]
-        data = data[.!MvIdx]
+    if any(.!good_wvf)
+        # @info "Moving $(sum(MvIdx)) waveforms to ignore folder because of: missing data points, infinite or nan data points, missing channel"
+        # dst_folder = csv_folder * "ignore/"
+        # if !ispath(dst_folder)
+        #     mkpath(dst_folder)
+        # end
+        # mv.(fnames[MvIdx], [joinpath(dst_folder, file) for file in files[MvIdx]])
+        @info "Ignore $(sum(.!good_wvf)) waveforms because of: missing data points, infinite or nan data points, missing channel"
+        fnames = fnames[good_wvf]
+        data = data[good_wvf]
     end
 
     # add timestamps for all files (not just first)
@@ -123,13 +129,12 @@ function read_folder_csv_oscilloscope(csv_folder::String; heading::Int = 17, nwv
 
     times = fill(0u"µs":timestep:(length(data_ch1[1]) - 1)*timestep, length(data_ch1[1]))
     wvfs_ch1 = ArrayOfRDWaveforms([RDWaveform(time, wvfs) for (time, wvfs) in zip(times, data_ch1)])
-    @info "Reading $(length(wvfs_ch1)) waveforms from csv files"
-    
+   
     if nChannels == 1
-        return wvfs_ch1,  MetaData
+        return wvfs_ch1, MetaData, good_wvf
     elseif nChannels ==2 
         wvfs_ch2 = ArrayOfRDWaveforms([RDWaveform(time, wvfs) for (time, wvfs) in zip(times, data_ch2)])
-        return wvfs_ch1, wvfs_ch2, MetaData
+        return wvfs_ch1, wvfs_ch2, MetaData, good_wvf
     end 
 end
 
@@ -153,12 +158,12 @@ INPUTS:
 - `wpf::Int` waveforms per files --> number of waveforms to write per `.lh5` file
 """
 function csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId, csv_folder::String; csv_heading::Int = 17, nwvfmax::Union{Int, Float64, Vector{Int64}} = NaN, nChannels::Int = 2, 
-        ti::ClosedInterval{<:Quantity} = 0.0u"µs".. 550.0u"µs", wpf::Int = 1000)
+        ti::ClosedInterval{<:Quantity} = 0.0u"µs".. 5000.0u"µs", wpf::Int = 1000)
     files = readdir(csv_folder)
     filter!(x -> occursin(".csv", x), files)
     nwvf_total = length(files)
     nwvf_total = ifelse(nwvfmax < nwvf_total, nwvfmax, nwvf_total)
-    nfiles = ceil(Int, nwvf_total/wpf)
+    nfiles = ceil(Int, nwvf_total/wpf) # number of created hdf5 files, based on selected number of waveforms per hdf5 files
     idx_start = [wpf*(i-1)+1 for i = 1:nfiles]
     idx_stop = [wpf*i for i = 1:nfiles]
     idx_stop[end] = nwvf_total
@@ -173,25 +178,27 @@ function csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, category
     Threads.@threads for i = 1:nfiles
         # read csv files in csv_folder 
         if nChannels == 1
-            wvfs_ch1, MetaData = read_folder_csv_oscilloscope(csv_folder; heading = csv_heading, nChannels = nChannels, nwvfmax = collect(idx_start[i]:idx_stop[i])) # make sure you can read all waveforms 
+            wvfs_ch1, MetaData, good_wvf = read_folder_csv_oscilloscope(csv_folder; heading = csv_heading, nChannels = nChannels, nwvfmax = collect(idx_start[i]:idx_stop[i])) # make sure you can read all waveforms 
         elseif nChannels == 2
-            wvfs_ch1, wvfs_ch2, MetaData = read_folder_csv_oscilloscope(csv_folder; heading = csv_heading, nChannels = nChannels, nwvfmax = collect(idx_start[i]:idx_stop[i])) # make sure you can read all waveforms 
+            wvfs_ch1, wvfs_ch2, MetaData, good_wvf = read_folder_csv_oscilloscope(csv_folder; heading = csv_heading, nChannels = nChannels, nwvfmax = collect(idx_start[i]:idx_stop[i])) # make sure you can read all waveforms 
         end 
 
         # truncate waveforms 
         if rightendpoint(ti) < wvfs_ch1[1].time[end]
+            @info "Truncate waveforms to time interval: $ti (original was: $(wvfs_ch1[1].time[1])..$(wvfs_ch1[1].time[end]))"
             uflt_trunc = TruncateFilter(ti)
             wvfs_ch1 = ArrayOfRDWaveforms(uflt_trunc.(wvfs_ch1))
             if nChannels == 2
                 wvfs_ch2 = ArrayOfRDWaveforms(uflt_trunc.(wvfs_ch2))
             end
         end
-        h5name = h5folder * string(FileKey(data.name, period, run, category, Timestamp(MetaData.timestamp[1]))) * "-tier_raw.lh5"
-       
+        filekey = string(FileKey(data.name, period, run, category, Timestamp(MetaData.timestamp[1])))
+        h5name = h5folder * filekey * "-tier_raw.lh5"
+      
         fid = lh5open(h5name, "w")
         fid["$channel/raw/waveform"]  = wvfs_ch1
         fid["$channel/raw/daqenergy"] = maximum.(wvfs_ch1.signal) .- minimum.(wvfs_ch1.signal) #DAQ energy not available in oscilloscope, approx with difference between max and min, needed for compatibility with LEGEND functions
-        fid["$channel/raw/eventnumber"]  = eventnumber[idx_start[i]:idx_stop[i]] 
+        fid["$channel/raw/eventnumber"]  = eventnumber[idx_start[i]:idx_stop[i]][good_wvf]
         fid["$channel/raw/baseline"] = fill(NaN, length(wvfs_ch1)) # not available in csv files, but needed for compatibility with LEGEND functions
         for (key, value) in pairs(MetaData)
             if key == :Ch1
@@ -203,7 +210,7 @@ function csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, category
         if nChannels == 2
             fid["$(ChannelId(99))/raw/waveform"]  = wvfs_ch2 # hardcoded for now...
         end
-        @info "saved to file: $h5name"
+        @info "saved $(length(wvfs_ch1)) waveforms in .lh5 files with filekey: $filekey , folder: $h5folder"
         close(fid)
     end
 end
