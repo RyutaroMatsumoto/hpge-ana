@@ -20,8 +20,15 @@ input:
 function read_csv_metadata(filepath::String; heading::Int = 17, nChannels::Int = 2, timezone = "PT")
     # get time from filename. 
     timestr_file = split(split(filepath,".csv")[1],"_")[end][1:end-3] 
-    time_iso = timestr_file[1:8]*"T"*timestr_file[9:end]*timezone
-    time_unix = datetime2unix( DateTime(time_iso, "yyyymmddTHHMMSS$(timezone)"))
+    if _is_valid_datestr(timestr_file; timezone = timezone)
+        time_iso = timestr_file[1:8]*"T"*timestr_file[9:end]*timezone
+        time_unix = datetime2unix( DateTime(time_iso, "yyyymmddTHHMMSS$(timezone)"))
+    else
+        @warn "csv files should have a iso-timekey in the filename. If not, current time is used"
+        current_datetime = now()
+        time_iso = Dates.format(current_datetime, "yyyymmddTHHMMSS$(timezone)")
+        time_unix = round(Int64, Dates.datetime2unix(current_datetime))
+    end
     MetaData = (timestamp = time_unix, time_iso = time_iso)
 
     # read header from csv file 
@@ -108,8 +115,15 @@ function read_folder_csv_oscilloscope(csv_folder::String; heading::Int = 17, nwv
 
     # add timestamps for all files (not just first)
     timestr_file = [split.(split.(fn,".csv")[1],"_")[end][1:end-3] for fn in fnames]
-    time_iso = [ts[1:8]*"T"*ts[9:end]*timezone for ts in timestr_file] 
-    time_unix = datetime2unix.(DateTime.(time_iso, "yyyymmddTHHMMSS$(timezone)"))
+    if _is_valid_datestr(timestr_file[1]; timezone = timezone)
+        time_iso = [ts[1:8]*"T"*ts[9:end]*timezone for ts in timestr_file] 
+        time_unix = datetime2unix.(DateTime.(time_iso, "yyyymmddTHHMMSS$(timezone)"))
+    else 
+        @warn "csv files should have a iso-timekey in the filename. If not, current time is used"
+        current_datetime = fill(now(), length(fnames)) .+ Second.(1:length(fnames))
+        time_iso = Dates.format.(current_datetime, "yyyymmddTHHMMSS$(timezone)")
+        time_unix = round.(Int64, Dates.datetime2unix.(current_datetime))
+    end
     MetaData = merge(MetaData, (timestamp = time_unix, time_iso = time_iso))
 
     # assign data to the right channel
@@ -175,7 +189,8 @@ function csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, category
     end
 
     # create hdf5 file and write
-    Threads.@threads for i = 1:nfiles
+    #Threads.@threads 
+    for i = 1:nfiles
         # read csv files in csv_folder 
         if nChannels == 1
             wvfs_ch1, MetaData, good_wvf = read_folder_csv_oscilloscope(csv_folder; heading = csv_heading, nChannels = nChannels, nwvfmax = collect(idx_start[i]:idx_stop[i])) # make sure you can read all waveforms 
@@ -214,3 +229,22 @@ function csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, category
         close(fid)
     end
 end
+
+"""
+    _is_valid_datestr(timestr_file::String; timezone::String = "PT")
+check if the time string in the filename is a valid date string
+"""
+function _is_valid_datestr(timestr_file::AbstractString; timezone::String = "PT")
+    if length(timestr_file) < 14 
+        return false
+    else
+        time_iso = timestr_file[1:8]*"T"*timestr_file[9:end]*timezone
+        try
+            time_unix = datetime2unix( DateTime(time_iso, "yyyymmddTHHMMSS$(timezone)"))
+            return true
+        catch e
+            time_unix = datetime2unix( DateTime(time_iso, "yyyymmddTHHMMSS$(timezone)"))
+            return false
+        end 
+    end
+end 
