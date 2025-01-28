@@ -1,3 +1,6 @@
+relPath_processor = relpath(split(@__DIR__, "hpge-ana")[1], @__DIR__) * "/hpge-ana/"
+include("$(@__DIR__)/$relPath_processor/utils/utils_aux.jl")
+include("$(@__DIR__)/$relPath_processor/utils/utils_plot.jl")
 """
     process_energy_calibration(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId, source::Symbol; reprocess::Bool = true, ecal_config::PropDict = data.metadata.config.energy.energy_config.default, e_types::Vector{<:Symbol} = [:e_trap, :e_cusp, :e_zac])
 perform energy calibration: take uncalibration energy values from dsp files and calibrate them using calibration sources
@@ -16,8 +19,8 @@ OUTPUT:
 - save the calibration parameters as json files to disk (in generated/par/rpars/ecal/...) 
 - save the calibration plots to disk (in generated/jlplt/rplt/...)
 """
-function process_energy_calibration(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId;
-        reprocess::Bool = true, ecal_config::PropDict = data.metadata.config.energy.energy_config.default, source::Symbol = Symbol(ecal_config.source), e_types::Vector{<:Symbol} = [:e_trap, :e_cusp, :e_zac])
+function process_energy_calibration(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId, ecal_config::PropDict;
+         reprocess::Bool = true, e_types::Vector{<:Symbol} = [:e_trap, :e_cusp, :e_zac])
 
     if !reprocess && all([haskey(data.par.rpars.ecal[period, run, channel], e_type) for e_type in e_types])
         @info "Energy calibration already exists for all $(e_types)  -> you're done!"
@@ -25,8 +28,8 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
     end
 
     result_dict = Dict{Symbol, NamedTuple}()
-
     # load configuration for calibration
+    source = Symbol(ecal_config.source)
     @info "Load calibration configuration for $(source) source"
     if source == :th228
         calib_type = :th228
@@ -47,15 +50,16 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
 
     # read dsp parameters
     dsp_pars = Table(read_ldata(data, :jldsp, category, period, run, channel);)
-
+    filekey = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])[1]
     fs = 12
     function _energy_calibration(e_type::Symbol)
         if !reprocess && haskey(data.par.rpars.ecal[period, run, channel], e_type)
             @info "Load existing calibration pars for $(e_type)"
             return NamedTuple(data.par.rpars.ecal[period, run, channel][e_type])
         end
+        plt_folder = LegendDataManagement.LDMUtils.get_pltfolder(data, filekey, :energy_calibration) * "/"
         # select energy filter and apply qc
-        e_uncal = getproperty(dsp_pars, Symbol("$e_type"))[findall(qc.wvf_keep)]
+        e_uncal = getproperty(dsp_pars, Symbol("$e_type"))[findall(qc.wvf_keep.all)]
         e_uncal_func = "$e_type"
 
         # do simple calibration and plot 
@@ -68,11 +72,12 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
 
         m_cal_simple = result_simple.c
         Plots_theme(; fs = fs, grid = :on)
-        p = plot(report_simple, right_margin=4mm, top_margin = 0mm, yformatter=:plain, thickness_scaling=1.5, cal=true,  size = (620, 400))
+        p = plot(report_simple, right_margin=4mm, top_margin = 0mm, yformatter=:plain, thickness_scaling=1.5, cal=true,  size = (620, 400), ylims = (1, :auto))
         filekey = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])[1]
         title!(p, get_plottitle(filekey, _channel2detector(data, channel), "Simple Calibration"; additiional_type=string(e_type)), titlefontsize = 7)
-        plt_simple = savelfig(savefig, p, data, filekey, channel, Symbol("simple_calibration_$(e_type)"))
-        @info "Save simple calibration plot to $(plt_simple)"
+        pname = plt_folder * _get_pltfilename(data, filekey, channel, Symbol("simple_calibration_$(e_type)"))
+        savefig(p, pname)
+        @info "Save simple calibration plot to $(pname)"
 
         # # fit peaks
         @debug "Fit all peaks"
@@ -81,8 +86,9 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
         Plots_theme(; fs = fs+2, grid = :off)
         p = plot(broadcast(k -> plot(report_fit[k], left_margin=2mm, right_margin=2mm, top_margin=-5mm, bottom_margin=-2mm, title=string(k), ms=2), keys(report_fit))..., layout=(length(report_fit), 1), size=(1000,710*length(report_fit)) , thickness_scaling=1.8, titlefontsize = 10, legendfontsize = 8, yguidefontsize = 9, xguidefontsize=11)
         plot!(p, plot_title=get_plottitle(filekey, _channel2detector(data, channel), "Peak Fits"; additiional_type=string(e_type)), plot_titlelocation=(0.5,0.2), plot_titlefontsize = 12)
-        plt_peaks = savelfig(savefig, p, data, filekey, channel , Symbol("peak_fits_$(e_type)"))
-        @info "Save peak fits plot to $(plt_peaks)"
+        pname = plt_folder * _get_pltfilename(data, filekey, channel, Symbol("peak_fits_$(e_type)"))
+        savefig(p, pname)
+        @info "Save peak fits plot to $(pname)"
 
         # calibration curve 
         gamma_names_cal_fit = [p for p in gamma_names if !(p in Symbol.(ecal_config.cal_fit_excluded_peaks))]
@@ -101,8 +107,9 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
         end
         plot!(p, thickness_scaling = 1.5, legend = :topleft,  ylabel = "Energy (a.u.)")
         plot!(plot_title=get_plottitle(filekey, _channel2detector(data, channel), " Calibration Curve"; additiional_type=string(e_type)), plot_titlelocation=(0.5,0.3), plot_titlefontsize=7)
-        pcal = savelfig(savefig, p, data, filekey, channel, Symbol("calibration_curve_$(e_type)"))
-        @info "Save calibration curve plot to $(pcal)"
+        pname = plt_folder * _get_pltfilename(data, filekey, channel, Symbol("calibration_curve_$(e_type)"))
+        savefig(p, pname)
+        @info "Save calibration curve plot to $(pname)"
 
         # resolution curve 
         f_cal_widths(x) = report_calib.f_fit(x) .* report_calib.e_unit .- first(report_calib.par)
@@ -121,7 +128,8 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
         end 
         plot!(p, thickness_scaling = 1.5, xticks = 0:500:3000, legend = :bottomright, xlabel = "Energy (keV)", right_margin = 3mm)
         plot!(plot_title=get_plottitle(filekey, _channel2detector(data, channel), "FWHM"; additiional_type=string(e_type)), plot_titlelocation=(0.5,0.3), plot_titlefontsize=8)
-        savelfig(savefig, p, data, filekey, channel, Symbol("fwhm_$(e_type)"))
+        pname = plt_folder * _get_pltfilename(data, filekey, channel, Symbol("fwhm_$(e_type)"))
+        savefig(p, pname)
 
         # calibrate best fit values using energy calibration curve 
         f_cal_pos(x) = report_calib.f_fit(x) .* report_calib.e_unit
@@ -150,4 +158,11 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
     result = PropDict(Dict("$channel" => result_dict))
     writelprops(data.par.rpars.ecal[period], run, result)
     @info "Saved pars to disk"
+end
+
+function process_energy_calibration(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; kwargs...)
+    filekeys = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])[1]
+    ecal_config = dataprod_config(data).energy(filekeys).default
+    @info "Using default energy calibration configuration"
+    process_energy_calibration(data, period, run, category, channel, ecal_config; kwargs...)
 end

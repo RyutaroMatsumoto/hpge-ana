@@ -51,6 +51,6 @@ function apply_qc(dsp_par::Union{PropDict, Table}, config_qc::PropDict)
 
     wvf_keep = merge(wvf_keep, (all = wvf_keep_all, finite = wvf_keep_finite) )
     cuts = PropDict(Dict(:qc_surv => qc_surv, :wvf_keep => wvf_keep))
-    cuts_minimal = PropDict(Dict(:qc_surv => cuts.qc_surv.all, :wvf_keep => cuts.wvf_keep.all))
-    return cuts, cuts_minimal
+    # cuts_minimal = PropDict(Dict(:qc_surv => cuts.qc_surv.all, :wvf_keep => cuts.wvf_keep.all))
+    return cuts#, cuts_minimal
 end 

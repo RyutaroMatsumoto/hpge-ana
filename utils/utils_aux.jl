@@ -1,3 +1,5 @@
+using LegendDataManagement.LDMUtils
+
 function _quantile_truncfit(x::Vector; qmin::T = 0.02, qmax::T = 0.98)  where T<:Real
     filter!(isfinite, x)
     quantile(skipmissing(x), qmin),  quantile(skipmissing(x), qmax)
@@ -30,6 +32,14 @@ function _detector2channel(data::LegendData, detector::DetectorId)
     channels = [ChannelId(data.metadata.hardware.detectors.germanium[k].channel) for k in keys(data.metadata.hardware.detectors.germanium)]
     channels[findfirst(x -> x== detector, detectors)]
 end
+
+function _get_pltfilename(data::LegendData, filekey::FileKey, channel::ChannelIdLike, process::Symbol)
+    pname = split(LegendDataManagement.LDMUtils.get_pltfilename(data, filekey, channel, process),"/")[end]
+    d = LegendDataManagement.LDMUtils.get_pltfolder(data, filekey, process)
+    ifelse(isempty(readdir(d)), rm(d), nothing )
+    return pname 
+end
+
 
 
 

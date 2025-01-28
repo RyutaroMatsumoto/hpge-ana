@@ -40,7 +40,13 @@ function process_filteropt(data::LegendData, period::DataPeriod, run::DataRun, c
     @debug "Created path for filter optimization results"
 
     # load waveforms from peakfile
-    data_peak  = read_ldata((peak), data, :jlpeaks, category, period, run, channel)
+    if peak == :all 
+        filekeys = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])
+        data_peak = read_ldata(data, DataTier(:raw), filekeys, channel)
+        data_peak = merge(data_peak, (gamma_line = [1170*u"keV"],))
+    else
+        data_peak  = read_ldata((peak), data, :jlpeaks, category, period, run, channel)
+    end 
     wvfs = data_peak.waveform
     @debug "Loaded waveforms for peak $peak"
 
@@ -48,6 +54,8 @@ function process_filteropt(data::LegendData, period::DataPeriod, run::DataRun, c
         @info "Optimize filter $filter_type"
         _, def_ft = get_fltpars(PropDict(), filter_type, dsp_config)
         filekey = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])[1]
+        plt_folder = LegendDataManagement.LDMUtils.get_pltfolder(data, filekey, :filteropt) * "/"
+
         # STEP 1: rise-time optimization --> min. baseline noise after filtering 
         if rt_opt_mode == :bl_noise 
             result_rt, report_rt = filteropt_rt_optimization_blnoise(filter_type, wvfs, dsp_config, τ_pz; ft = def_ft)
@@ -60,8 +68,9 @@ function process_filteropt(data::LegendData, period::DataPeriod, run::DataRun, c
             plot!([ustrip(report_rt.rt), ustrip(report_rt.rt)], [ylims()[1], report_rt.min_enc], color = :red2, linewidth = 2, linestyle = :dot,
                             label = @sprintf("Optimal rise-time = %.1f %s", ustrip(report_rt.rt), unit(report_rt.rt)))
             plot!([xlims()[1], ustrip(report_rt.rt)], [report_rt.min_enc, report_rt.min_enc], color = :red2, linewidth = 2, linestyle = :dot, label = false)
-            savelfig(savefig,p , data, filekey, channel,  Symbol("noise_sweep_$(filter_type)_blnoise"))
-            @info "Save sanity plot to $(LegendDataManagement.LDMUtils.get_pltfilename(data, filekey, channel, :fltopt_rt))"
+            pname = plt_folder * split(LegendDataManagement.LDMUtils.get_pltfilename(data, filekeys[1], channel, Symbol("noise_sweep_$(filter_type)_blnoise")),"/")[end]
+            d = LegendDataManagement.LDMUtils.get_pltfolder(data, filekeys[1], Symbol("noise_sweep_$(filter_type)_blnoise"))
+            ifelse(isempty(readdir(d)), rm(d), nothing )
         elseif rt_opt_mode == :pickoff
             # for now: do 2 versions or rt...the same using LEGEND DSP function 
             # pro: + compatibility with Juleana; proper fitting of enc instead of rms
@@ -73,8 +82,12 @@ function process_filteropt(data::LegendData, period::DataPeriod, run::DataRun, c
             @info "Found optimal rise-time: $(result_rt.rt) at fixed ft = $def_ft"
             p = plot(report_rt)
             title!(p, get_plottitle(filekey, det, "Noise Sweep"; additiional_type=string(filter_type)))
-            savelfig(savefig, p, data, filekey, channel, Symbol("noise_sweep_$(filter_type)"))
+            pname = plt_folder * split(LegendDataManagement.LDMUtils.get_pltfilename(data, filekeys[1], channel, Symbol("noise_sweep_$(filter_type)_pickoff")),"/")[end]
+            d = LegendDataManagement.LDMUtils.get_pltfolder(data, filekeys[1], Symbol("noise_sweep_$(filter_type)_pickoff"))
+            ifelse(isempty(readdir(d)), rm(d), nothing )
         end 
+        savefig(p, pname)
+        @info "Save sanity plot to $pname"
 
         # 2. flat top time optimixation 
         e_grid_ft   = getproperty(dsp_config, Symbol("e_grid_ft_$(filter_type)"))
@@ -87,9 +100,12 @@ function process_filteropt(data::LegendData, period::DataPeriod, run::DataRun, c
         ymin = ifelse(mvalue(ustrip(result_ft.min_fwhm)) - 0.2 < 0, 0, mvalue(ustrip(result_ft.min_fwhm)) - 1)
         ymax = maximum(mvalue.(ustrip.(report_ft.fwhm))) + 0.2
         ylims!(ymin, ymax)
-        # title!("$filter_type" * @sprintf("filter: flattop-time optimization; rt = %.2f %s", ustrip(result_rt.rt), unit(result_rt.rt)) * "\n $period, $run, $channel, $peak peak")
         title!(get_plottitle(filekey, det, "$peak FT Scan"; additiional_type=string(filter_type)))
-        savelfig(savefig, p, data, filekey, channel, Symbol("fwhm_ft_scan_$(filter_type)"))
+        pname_ft = plt_folder * split(LegendDataManagement.LDMUtils.get_pltfilename(data, filekeys[1], channel, Symbol("fwhm_ft_scan_$(filter_type)")),"/")[end]
+        d = LegendDataManagement.LDMUtils.get_pltfolder(data, filekeys[1], Symbol("fwhm_ft_scan_$(filter_type)"))
+        ifelse(isempty(readdir(d)), rm(d), nothing )
+        savefig(p, pname_ft)
+        @info "Save sanity plot to $pname_ft"
 
         # return result for this filter type
         merge(result_rt, result_ft)
@@ -105,11 +121,12 @@ function process_filteropt(data::LegendData, period::DataPeriod, run::DataRun, c
 end
 
 function process_filteropt(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; kwargs...)
-    # load meta data and configs 
-    dsp_config = DSPConfig(data.metadata.config.dsp.dsp_config.default)
-    peak =  Symbol(data.metadata.config.dsp.dsp_config.pz.default.peak)
+    
+    filekeys = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])
+    dsp_config = DSPConfig(dataprod_config(data).dsp(filekeys[1]).default)
+    pz_config = dataprod_config(data).dsp(filekeys[1]).pz.default
 
-    # load decay time for pole-zero correction 
+    peak =  Symbol(pz_config.peak)
     τ_pz = mvalue(get_values(data.par.rpars.pz[period, run, channel]).τ)
     @debug "Loaded decay time for pole-zero correction: $τ_pz"
 

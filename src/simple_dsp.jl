@@ -1,16 +1,25 @@
+using RadiationDetectorDSP
+using RadiationDetectorSignals
+using LegendDSP
+using LegendDSP: get_fltpars
+using Measurements: value as mvalue
+using PropDicts
+using Unitful
+using IntervalSets
+using TypedTables
 function simple_dsp(data::Q, dsp_config::DSPConfig; τ_pz::Quantity{T} = 0.0u"µs", pars_filter::PropDict) where {Q <: Table, T<:Real}
     wvfs = data.waveform
 
-    #### if pars_filter not defined, use default from config 
-    trap_rt, trap_ft = mvalue(pars_filter.trap.rt),  mvalue(pars_filter.trap.ft)
-    cusp_rt, cusp_ft = mvalue(pars_filter.cusp.rt),  mvalue(pars_filter.cusp.ft)
-    zac_rt, zac_ft   = mvalue(pars_filter.zac.rt),  mvalue(pars_filter.zac.ft)
-    sg_wl            = get_fltpars(pars_filter, :sg, dsp_config)
+    #### get filter parameters from config. if otimized values are not found; use default.  
+    trap_rt, trap_ft = mvalue.(get_fltpars(pars_filter, :trap, dsp_config))
+    cusp_rt, cusp_ft = mvalue.(get_fltpars(pars_filter, :cusp, dsp_config))
+    zac_rt, zac_ft   = mvalue.(get_fltpars(pars_filter, :zac, dsp_config))
+    sg_wl            = mvalue(get_fltpars(pars_filter, :sg, dsp_config))
 
     # get CUSP and ZAC filter length and flt scale
-    flt_length_zac              = dsp_config.flt_length_zac
+    flt_length_zac              = getproperty(dsp_config, Symbol("flt_length_zac")) 
     zac_scale                   = ustrip(NoUnits, flt_length_zac/step(wvfs[1].time))
-    flt_length_cusp             = dsp_config.flt_length_cusp
+    flt_length_cusp             = getproperty(dsp_config, Symbol("flt_length_cusp")) 
     cusp_scale                  = ustrip(NoUnits, flt_length_cusp/step(wvfs[1].time))
 
     # set tau for CUSP filter to very high number to switch of CR filter
@@ -32,7 +41,7 @@ function simple_dsp(data::Q, dsp_config::DSPConfig; τ_pz::Quantity{T} = 0.0u"µ
     
     # deconvolute waveform: pole-zero correction. Use pre-defined tau from decay time analysis OR median decay time for all waveforms
     if τ_pz == 0.0u"µs"
-        τ_pz = median(filter!(isfinite,tail_stats.τ))
+        τ_pz = median(filter!(isfinite, tail_stats.τ))
     end
     deconv_flt = InvCRFilter(τ_pz)
     wvfs = deconv_flt.(wvfs)
@@ -76,19 +85,18 @@ function simple_dsp(data::Q, dsp_config::DSPConfig; τ_pz::Quantity{T} = 0.0u"µ
     
     # get trap energy of optimized rise and flat-top time
     uflt_trap_rtft = TrapezoidalChargeFilter(trap_rt, trap_ft)
-    
     e_trap = signal_estimator.(uflt_trap_rtft.(wvfs), t50 .+ (trap_rt + trap_ft/2))
-    
+
+
     # get cusp energy of optimized rise and flat-top time
-    uflt_cusp_rtft = CUSPChargeFilter(cusp_rt, cusp_ft, τ_cusp, flt_length_cusp, cusp_scale)
-    
+    uflt_cusp_rtft = CUSPChargeFilter(cusp_rt, cusp_ft, τ_cusp, flt_length_cusp, cusp_scale) 
     e_cusp = signal_estimator.(uflt_cusp_rtft.(wvfs), t50 .+ (flt_length_cusp /2))
-    
+
     # get zac energy of optimized rise and flat-top time
-    uflt_zac_rtft = ZACChargeFilter(zac_rt, zac_ft, τ_zac, flt_length_zac, zac_scale)
-    
+    uflt_zac_rtft = ZACChargeFilter(zac_rt, zac_ft, τ_zac, flt_length_zac, zac_scale) 
     e_zac = signal_estimator.(uflt_zac_rtft.(wvfs), t50 .+ (flt_length_zac /2))
-    
+
+
     # extract current with optimal SG filter length with second order polynominal and first derivative
     wvfs_sgflt_deriv = SavitzkyGolayFilter(sg_wl, dsp_config.sg_flt_degree, 1).(wvfs)
     a_sg = get_wvf_maximum.(wvfs_sgflt_deriv, leftendpoint(dsp_config.current_window), rightendpoint(dsp_config.current_window))
@@ -122,7 +130,6 @@ function simple_dsp(data::Q, dsp_config::DSPConfig; τ_pz::Quantity{T} = 0.0u"µ
         )
 end 
 
-
 """
 minimal version of `simple_dsp` - used to calculate quality cuts with peakfiles 
 """
@@ -130,7 +137,7 @@ function simple_dsp_qc(data::Q, dsp_config::DSPConfig; τ_pz::Quantity{T} = 0.0u
     wvfs = data.waveform
 
     #### get default from config 
-    trap_rt, trap_ft = get_fltpars(pars_filter,:trap, dsp_config)
+    trap_rt, trap_ft = get_fltpars(pars_filter, :trap, dsp_config)
 
     ################## ACTUAL WAVEFORM FILTERING AND RECONSTRUCTION, ANALYSIS BEGINS HERE ##################
     bl_stats = signalstats.(wvfs, leftendpoint(dsp_config.bl_window), rightendpoint(dsp_config.bl_window))

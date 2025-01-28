@@ -24,7 +24,7 @@ function process_qualitycuts(data::LegendData, period::DataPeriod, run::DataRun,
     dsp_par = Table(read_ldata(data, :jldsp, category, period, run, channel))
 
     # calculate quality cuts. defined in src/apply_qc.jl
-    _, qc = apply_qc(dsp_par, qc_config)
+     qc = apply_qc(dsp_par, qc_config)
 
     # add event number and timestamp
     qc[:timestamp] = dsp_par.timestamp

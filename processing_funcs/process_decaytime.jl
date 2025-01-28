@@ -13,7 +13,11 @@ function process_decaytime(data::LegendData, period::DataPeriod, run::DataRun, c
     @debug "Create pars db"
     mkpath(joinpath(data_path(data.par.rpars.pz), string(period)))
     
-    data_peak  = read_ldata((peak), data, :jlpeaks, category, period, run, channel)
+    if peak == :all 
+        data_peak = read_ldata(data, DataTier(:raw), filekeys, channel)
+    else
+        data_peak  = read_ldata((peak), data, :jlpeaks, category, period, run, channel)
+    end 
     wvfs = data_peak.waveform
     decay_times = dsp_decay_times(wvfs, bl_window, tail_window)
 
@@ -21,7 +25,7 @@ function process_decaytime(data::LegendData, period::DataPeriod, run::DataRun, c
     result, report = fit_single_trunc_gauss(decay_times, cuts_τ)
     
     # plot 
-    p = plot(report, size = (600, 500), legend = :topright, xlabel = "Decay time (µs)", fillcolor = :deepskyblue2, color = :darkorange, dpi = 200)
+    p = Plots.plot(report, size = (600, 500), legend = :topright, xlabel = "Decay time (µs)", fillcolor = :deepskyblue2, color = :darkorange, dpi = 200)
     plot!(p, xguidefontsize = 16, yguidefontsize = 16, xtickfontsize = 12, ytickfontsize = 12, legendfontsize = 10,
                 legendforegroundcolor = :silver)
     plot!(p, xlabel = " ", xtickfontsize = 1, bottom_margin = -6mm, ylims = (0, ylims()[2]+0.25*ylims()[2]), subplot = 1)
@@ -35,6 +39,7 @@ function process_decaytime(data::LegendData, period::DataPeriod, run::DataRun, c
     writelprops(data.par.rpars.pz[period], run, PropDict("$channel" => result_pz))
     @info "Saved pars to disk"
     display(p)
+    return p 
 end
 # export process_decaytime
 
@@ -50,10 +55,14 @@ function process_decaytime(data::LegendData, period::DataPeriod, run::DataRun, c
     process_decaytime(data, period, run, category, channel, pz_config.min_tau, pz_config.max_tau, pz_config.nbins, pz_config.rel_cut_fit, Symbol(pz_config.peak), dsp_config.bl_window, dsp_config.tail_window; kwargs...)
 end 
 
-function process_decaytime(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; 
-    pz_config::PropDict = data.metadata.config.dsp.dsp_config.pz.default, 
-    dsp_config::DSPConfig = DSPConfig(data.metadata.config.dsp.dsp_config.default), kwargs...)
-    # use default values for pz_config and dsp_config from metadata 
+function process_decaytime(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; kwargs...)
+    @info "use default values for pz_config and dsp_config from metadata"
+   
+    # load config: 
+    filekeys   = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])
+    pz_config  = dataprod_config(data).dsp(filekeys[1]).pz.default
+    dsp_config = DSPConfig(dataprod_config(data).dsp(filekeys[1]).default)
+
     process_decaytime(data, period, run, category, channel, pz_config.min_tau, pz_config.max_tau, pz_config.nbins, pz_config.rel_cut_fit, Symbol(pz_config.peak), dsp_config.bl_window, dsp_config.tail_window; kwargs...)
 end 
 
