@@ -40,8 +40,8 @@ function process_filteropt(data::LegendData, period::DataPeriod, run::DataRun, c
     @debug "Created path for filter optimization results"
 
     # load waveforms from peakfile
+    filekeys = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])
     if peak == :all 
-        filekeys = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])
         data_peak = read_ldata(data, DataTier(:raw), filekeys, channel)
         data_peak = merge(data_peak, (gamma_line = [1170*u"keV"],))
     else
