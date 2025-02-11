@@ -45,7 +45,7 @@ function read_csv_metadata(filepath::String; heading::Int = 17, nChannels::Int =
         end
     end
     if !haskey(MetaData1_nt, :Channel)
-        MetaData1_nt = merge(MetaData1_nt, (Channel = MetaData1_nt.TIME, ))
+         MetaData1_nt = merge(MetaData1_nt, (Channel = MetaData1_nt.TIME, ))
     end 
     MetaData = merge(MetaData, (Ch1 = MetaData1_nt, )) 
     timestep = uconvert(u"µs", MetaData.Ch1.SampleInterval .* uparse(MetaData.Ch1.HorizontalUnits))
