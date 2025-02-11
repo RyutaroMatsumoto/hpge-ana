@@ -57,6 +57,7 @@ function simple_dsp(data::Q, dsp_config::DSPConfig; τ_pz::Quantity{T} = 0.0u"µ
     
     # get threshold points in rise
     t10 = get_threshold(wvfs, wvf_max .* 0.1; mintot=dsp_config.kwargs_pars.tx_mintot)
+    t20 = get_threshold(wvfs, wvf_max .* 0.2; mintot=dsp_config.kwargs_pars.tx_mintot)
     t50 = get_threshold(wvfs, wvf_max .* 0.5; mintot=dsp_config.kwargs_pars.tx_mintot)
     t80 = get_threshold(wvfs, wvf_max .* 0.8; mintot=dsp_config.kwargs_pars.tx_mintot)
     t90 = get_threshold(wvfs, wvf_max .* 0.9; mintot=dsp_config.kwargs_pars.tx_mintot)
@@ -118,7 +119,7 @@ function simple_dsp(data::Q, dsp_config::DSPConfig; τ_pz::Quantity{T} = 0.0u"µ
     # return 
     Table(blmean = bl_stats.mean, blsigma = bl_stats.sigma, blslope = bl_stats.slope, bloffset = bl_stats.offset, 
         tailmean = pz_stats.mean, tailsigma = pz_stats.sigma, tailslope = pz_stats.slope, tailoffset = pz_stats.offset,
-        t0 = t0, t10 = t10, t50 = t50, t80 = t80, t90 = t90, t99 = t99,
+        t0 = t0, t10 = t10, t20 = t20, t50 = t50, t80 = t80, t90 = t90, t99 = t99,
         t50_current = t50_current, 
         drift_time = drift_time,
         tail_τ = tail_stats.τ, tail_mean = tail_stats.mean, tail_sigma = tail_stats.sigma,
