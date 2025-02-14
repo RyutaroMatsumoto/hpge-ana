@@ -155,7 +155,7 @@ end
 """
 csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, category::DataCategoryLike, channel::ChannelId, csv_folder::String; heading::Int = 17, nwvfmax::Union{Int, Float64, Vector{Int64}} = NaN, nChannels::Int = 2, 
         ti::ClosedInterval{<:Quantity} = 0.0u"µs".. 550.0u"µs")
-- converts csv files (e.g. from oscilloscope) to lh5 files
+- converts csv files from oscilloscope to lh5 files
 - format of csv file matches the one from an oscilloscope...might be different for other systems
 - saves the lh5 files in the raw tier defined in "LEGEND_DATA_CONFIG"
 INPUTS:
@@ -248,3 +248,89 @@ function _is_valid_datestr(timestr_file::AbstractString; timezone::String = "PT"
         end 
     end
 end 
+
+"""
+    skutek_csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId, csv_folder::String; timestep::Quantity = 0.01u"µs")
+     skutek_csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; kwargs...)
+convert csv files from Skutek digitizer "FemtoDAQ Vireo" to lh5 files
+- format of csv file matches the one of  Skutek digitizer "FemtoDAQ Vireo ...might be different for other systems
+### inputs:
+- `data::LegendData` LegendData object. You need `"LEGEND_DATA_CONFIG"` to construct this. this will define later where `.lh5` files are saved
+- `period::DataPeriod` data period that you want to assign your data to
+- `run::DataRun` data run that you want to assign your data to
+- `category::DataCategoryLike` data category that you want to assign your data to
+- `channel::ChannelId` channel id that you want to assign your data to
+- `csv_folder::String` folder where the csv files are located (optinal). if not defined use the default folder
+### kwargs
+- `timestep::Quantity` time step of the waveforms.  default is 0.01µs --> 100 MHz sampling. 
+"""
+function skutek_csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId, csv_folder::String; timestep::Quantity = 0.01u"µs")
+   # create folder to save lh5 files
+    h5folder = data.tier[DataTier(:raw), category, period, run] * "/"
+    if !ispath(h5folder)
+        mkpath(h5folder)
+        @info "created folder: $h5folder"
+    end
+    @info "folder: $h5folder"
+    # get list of all .ecsv files in csv_folder 
+    files_csv = readdir(csv_folder, join = true)
+    filter!(x -> occursin(".ecsv", x), files_csv)
+
+    # read HEADER of first file to get the absolute time of the measurement
+    header = CSV.read(files_csv[1], DataFrame; delim=':', header = false, limit = 1, silencewarnings = true);
+    timestamp_abs_unix  = datetime2unix(DateTime(split(header[1,2], "Time: ")[2], dateformat"yyyy-mm-dd HH:MM:SS"))
+
+    # load first file for relative timestamp start 
+    timestamp_evt_start = Int64(CSV.read(files_csv[1], DataFrame; delim='\t', comment = "#", header = false)[!,1][1])
+    eventnumber_max = 0 # to make eventnumber unique and increasing for all files in a run 
+
+    function _skutek_csv_to_lh5(filename::String, n_max::Int)
+        # read file and rename columns for better readability 
+        f = CSV.read(filename, DataFrame; delim='\t',  comment = "#", header = false) 
+        nchannel = size(f,2) - 2
+        column_names = ["timestamp", "channellist", "ch" .* string.(1:nchannel)...]
+        rename!(f, Symbol.(column_names))
+        
+        # Timestamp: Absolute time of the measurement in unix time. (seconds since 1970-01-01 00:00:00 UTC)
+        # The timestamp per waveform is given in units of clock cycles since the last reset of the FPGA. 
+        timestamp_rel = ustrip(uconvert(u"s",timestep)).* (Vector(Int64.(f.timestamp)) .- timestamp_evt_start)
+        timestamp_unix = timestamp_abs_unix .+ round.(Int64,timestamp_rel)
+
+        # Read channels 
+        channel1 = map(x -> Int32.(x), JSON.parse.(f.ch1))
+        channel2 = map(x -> Int32.(x), JSON.parse.(f.ch2))
+        ch_diff = channel1 .- channel2
+
+        # convert to waveforms 
+        nsamples = length(channel1[1])
+        times = 0.0u"µs":timestep:((nsamples - 1)*timestep)
+        wvfs = ArrayOfRDWaveforms([RDWaveform(t, signal) for (t, signal) in zip(fill(times, length(channel1)), ch_diff)])
+
+        # save to lh5 files 
+        filekey = string(FileKey(data.name, period, run, category, Timestamp(timestamp_unix[1])))
+        h5name = h5folder * filekey * "-tier_raw.lh5"
+        eventnumber = n_max .+ collect(1:length(wvfs))
+
+        fid = lh5open(h5name, "w")
+        fid["$channel/raw/waveform"]  = wvfs
+        fid["$channel/raw/daqenergy"] = maximum.(extrema.(wvfs.signal)) .- minimum.(extrema.(wvfs.signal)) #DAQ energy not available in oscilloscope, approx with difference between max and min, needed for compatibility with LEGEND functions
+        fid["$channel/raw/eventnumber"]  = eventnumber
+        fid["$channel/raw/timestamp"]  = timestamp_unix 
+        fid["$channel/raw/baseline"] = fill(NaN, length(wvfs)) # not available in csv files, but needed for compatibility with LEGEND functions
+        @info "saved $(length(wvfs)) waveforms in .lh5 files with filekey: $filekey"
+        close(fid)
+
+        return maximum(eventnumber)
+    end 
+    
+    for i in eachindex(files_csv)
+        if i ==1 
+            global eventnumber_max = 0
+        end
+        local n_max =  _skutek_csv_to_lh5(files_csv[i], eventnumber_max)
+        global eventnumber_max = n_max 
+    end
+end
+skutek_csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; kwargs...) = skutek_csv_to_lh5(data, period, run, category, channel, data.tier[DataTier(:raw_csv), category , period, run]; kwargs...)
+
+
