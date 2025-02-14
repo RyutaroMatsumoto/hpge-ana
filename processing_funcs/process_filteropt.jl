@@ -60,14 +60,16 @@ function process_filteropt(data::LegendData, period::DataPeriod, run::DataRun, c
         if rt_opt_mode == :bl_noise 
             result_rt, report_rt = filteropt_rt_optimization_blnoise(filter_type, wvfs, dsp_config, τ_pz; ft = def_ft)
             Plots_theme()
-            p = scatter(ustrip.(collect(report_rt.enc_grid_rt)), report_rt.enc, size = (600, 400), dpi = 150, 
-                        ms = 4, color = :deepskyblue2, markerstrokecolor = :deepskyblue2,
-                        xlabel = "Rise time ($(unit(report_rt.rt)))", ylabel = "Noise (a.u.)", 
-                        title = "Noise sweep ($filter_type); fixed ft = $(def_ft) \n $period, $run, $channel, $peak peak",
-                        label = "Data")
-            plot!([ustrip(report_rt.rt), ustrip(report_rt.rt)], [ylims()[1], report_rt.min_enc], color = :red2, linewidth = 2, linestyle = :dot,
-                            label = @sprintf("Optimal rise-time = %.1f %s", ustrip(report_rt.rt), unit(report_rt.rt)))
-            plot!([xlims()[1], ustrip(report_rt.rt)], [report_rt.min_enc, report_rt.min_enc], color = :red2, linewidth = 2, linestyle = :dot, label = false)
+            rt_inter = range(ustrip.(report_rt.enc_grid_rt[1]), stop = ustrip(maximum(report_rt.enc_grid_rt[findall(isfinite.(report_rt.enc))])), step = 0.05); 
+            p = plot(rt_inter, report_rt.f_interp.(rt_inter), color = :deepskyblue2, linewidth = 3, linestyle = :solid, label = "Interpolation")
+            Plots.scatter!(ustrip.(collect(report_rt.enc_grid_rt)), report_rt.enc, 
+                size = (600, 400), dpi = 150, 
+                ms = 4, color = :black, markerstrokecolor = :black,
+                xlabel = "Rise time ($(unit(report_rt.rt)))", ylabel = "Noise (a.u.)", 
+                title = "Noise sweep ($filter_type), $period-$run-$channel, $peak peak \n" * @sprintf("fixed ft = %.2f %s, optimal rt = %.1f %s", ustrip(def_ft), unit(def_ft), ustrip(report_rt.rt), unit(report_rt.rt)),
+                label = "Data",
+                legend = :top)
+            Plots.xlims!(ustrip.(extrema(report_rt.enc_grid_rt))[1] - 0.2, ustrip.(extrema(report_rt.enc_grid_rt))[2] + 0.2)
             pname = plt_folder * split(LegendDataManagement.LDMUtils.get_pltfilename(data, filekeys[1], channel, Symbol("noise_sweep_$(filter_type)_blnoise")),"/")[end]
             d = LegendDataManagement.LDMUtils.get_pltfolder(data, filekeys[1], Symbol("noise_sweep_$(filter_type)_blnoise"))
             ifelse(isempty(readdir(d)), rm(d), nothing )
@@ -80,7 +82,7 @@ function process_filteropt(data::LegendData, period::DataPeriod, run::DataRun, c
             e_grid_rt   = getproperty(dsp_config, Symbol("e_grid_rt_$(filter_type)"))
             result_rt, report_rt = fit_enc_sigmas(enc_grid, e_grid_rt, enc_min, enc_max, round(Int,size(enc_grid)[2]/5), 0.1)
             @info "Found optimal rise-time: $(result_rt.rt) at fixed ft = $def_ft"
-            p = plot(report_rt)
+            p = Plots.plot(report_rt)
             title!(p, get_plottitle(filekey, det, "Noise Sweep"; additiional_type=string(filter_type)))
             pname = plt_folder * split(LegendDataManagement.LDMUtils.get_pltfilename(data, filekeys[1], channel, Symbol("noise_sweep_$(filter_type)_pickoff")),"/")[end]
             d = LegendDataManagement.LDMUtils.get_pltfolder(data, filekeys[1], Symbol("noise_sweep_$(filter_type)_pickoff"))
