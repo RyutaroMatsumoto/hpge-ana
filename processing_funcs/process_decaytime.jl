@@ -28,7 +28,7 @@ function process_decaytime(data::LegendData, period::DataPeriod, run::DataRun, c
     p = Plots.plot(report, size = (600, 500), legend = :topright, xlabel = "Decay time (µs)", fillcolor = :deepskyblue2, color = :darkorange, dpi = 200)
     plot!(p, xguidefontsize = 16, yguidefontsize = 16, xtickfontsize = 12, ytickfontsize = 12, legendfontsize = 10,
                 legendforegroundcolor = :silver)
-    plot!(p, xlabel = " ", xtickfontsize = 1, bottom_margin = -6mm, ylims = (0, ylims()[2]+0.25*ylims()[2]), subplot = 1)
+    Plots.plot!(p, xlabel = " ", xtickfontsize = 1, bottom_margin = -6mm, ylims = (0, ylims()[2]+0.25*ylims()[2]), subplot = 1)
     filekey = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])[1]
     title!(p, get_plottitle(filekey, det, "Decay Time Distribution"),  subplot=1, titlefontsize = 12)
     savelfig(savefig, p, data, filekey, channel, :decay_time)
