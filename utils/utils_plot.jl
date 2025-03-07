@@ -40,3 +40,12 @@ function Plots_theme(; fs::Int = 16, grid::Symbol = :off)
     )
 end
 
+function LegendMakie.lplot!(report::NamedTuple{(:h_calsimple, :h_uncal, :c, :peak_guess, :peakhists, :peakstats)}; kwargs...)
+    report_rn = (h_calsimple = report.h_calsimple, 
+                        h_uncal = report.h_uncal,
+                        c = report.c,
+                        fep_guess = report.peak_guess,
+                        peakhists = report.peakhists,
+                        peakstats = report.peakstats)
+    LegendMakie.lplot!(report_rn; kwargs...) 
+end
