@@ -20,7 +20,7 @@ OUTPUT:
 - save the calibration plots to disk (in generated/jlplt/rplt/...)
 """
 function process_energy_calibration(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId, ecal_config::PropDict;
-         reprocess::Bool = true, e_types::Vector{<:Symbol} = [:e_trap, :e_cusp, :e_zac])
+         reprocess::Bool = true, e_types::Vector{<:Symbol} = [:e_trap, :e_cusp, :e_zac], juleana_logo::Bool = false)
 
     if !reprocess && all([haskey(data.par.rpars.ecal[period, run, channel], e_type) for e_type in e_types])
         @info "Energy calibration already exists for all $(e_types)  -> you're done!"
@@ -52,6 +52,7 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
     dsp_pars = Table(read_ldata(data, :jldsp, category, period, run, channel);)
     filekey = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])[1]
     fs = 12
+    det = _channel2detector(data, channel)
     function _energy_calibration(e_type::Symbol)
         if !reprocess && haskey(data.par.rpars.ecal[period, run, channel], e_type)
             @info "Load existing calibration pars for $(e_type)"
@@ -71,23 +72,31 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
                     peakfinder_σ = ecal_config.peakfinder_σ);
 
         m_cal_simple = result_simple.c
-        Plots_theme(; fs = fs, grid = :on)
-        p = plot(report_simple, right_margin=4mm, top_margin = 0mm, yformatter=:plain, thickness_scaling=1.5, cal=true,  size = (620, 400), ylims = (1, :auto))
         filekey = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])[1]
-        title!(p, get_plottitle(filekey, _channel2detector(data, channel), "Simple Calibration"; additiional_type=string(e_type)), titlefontsize = 7)
-        pname = plt_folder * _get_pltfilename(data, filekey, channel, Symbol("simple_calibration_$(e_type)"))
-        savefig(p, pname)
-        @info "Save simple calibration plot to $(pname)"
+        pname_simple = plt_folder * _get_pltfilename(data, filekey, channel, Symbol("simple_calibration_$(e_type)"))
+
+        report_simple_alt = (h_calsimple = report_simple.h_calsimple, 
+            h_uncal = report_simple.h_uncal,
+            c = report_simple.c,
+            fep_guess = report_simple.peak_guess,
+            peakhists = report_simple.peakhists,
+            peakstats = report_simple.peakstats)
+        fig_simple = LegendMakie.lplot(report_simple_alt, title = get_plottitle(filekey, det, "Simple Calibration"; additiional_type=string(e_type)), cal = true, juleana_logo = juleana_logo)
+        Makie.current_axis().titlesize = 16;
+        [delete!(leg) for leg in fig_simple.content if leg isa Legend]
+        vl = vlines!([report_simple.peak_guess * ustrip(report_simple.c)], color = :red2, label = "Peak Guess", alpha = 0.5, linewidth = 3)
+        axislegend(Makie.current_axis(), [vl], ["Peak Guess"], position = :lt)
+        Makie.xlims!(Makie.current_axis(), 300, 2000)
+        save(pname_simple, fig_simple )
+        @info "Save simple calibration plot to $(pname_simple)"
 
         # # fit peaks
         @debug "Fit all peaks"
         result_fit, report_fit = fit_peaks(result_simple.peakhists, result_simple.peakstats, gamma_names; 
                                     e_unit=result_simple.unit, calib_type=:th228, fit_func = fit_funcs, m_cal_simple=m_cal_simple)
-        Plots_theme(; fs = fs+2, grid = :off)
-        p = plot(broadcast(k -> plot(report_fit[k], left_margin=2mm, right_margin=2mm, top_margin=-5mm, bottom_margin=-2mm, title=string(k), ms=2), keys(report_fit))..., layout=(length(report_fit), 1), size=(1000,710*length(report_fit)) , thickness_scaling=1.8, titlefontsize = 10, legendfontsize = 8, yguidefontsize = 9, xguidefontsize=11)
-        plot!(p, plot_title=get_plottitle(filekey, _channel2detector(data, channel), "Peak Fits"; additiional_type=string(e_type)), plot_titlelocation=(0.5,0.2), plot_titlefontsize = 12)
         pname = plt_folder * _get_pltfilename(data, filekey, channel, Symbol("peak_fits_$(e_type)"))
-        savefig(p, pname)
+        fig_fit = LegendMakie.lplot(report_fit, figsize = (600, 400*length(report_fit)), title = get_plottitle(filekey, det, "Peak Fits"; additiional_type=string(e_type)), juleana_logo = juleana_logo)
+        save(pname, fig_fit)
         @info "Save peak fits plot to $(pname)"
 
         # calibration curve 
@@ -97,20 +106,18 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
         result_calib, report_calib = fit_calibration(ecal_config.cal_pol_order, μ_fit, pp_fit; e_expression=e_uncal_func)
         @debug "Found $e_type calibration curve: $(result_calib.func)"
         # plot calibration curve 
-        Plots_theme(; fs = fs, grid = :on)
         μ_notfit =  [result_fit[p].centroid for p in gamma_names if !(p in gamma_names_cal_fit)]
         pp_notfit = [gamma_lines_dict[p] for p in gamma_names if !(p in gamma_names_cal_fit)]
-        if isempty(μ_notfit)
-            p = plot(report_calib, xerrscaling=100)
+        pname_calib = plt_folder * _get_pltfilename(data, filekey, channel, Symbol("calibration_curve_$(e_type)"))
+        fig_calib = if isempty(μ_notfit)
+            LegendMakie.lplot(report_calib, xerrscaling=100, title = get_plottitle(filekey, det, "Calibration Curve"; additiional_type=string(e_type)), juleana_logo = juleana_logo)
         else
-            p = plot(report_calib, xerrscaling=100, additional_pts=(μ = μ_notfit, peaks = pp_notfit))
+            LegendMakie.lplot(report_calib, xerrscaling=100, additional_pts=(μ = μ_notfit, peaks = pp_notfit), title = get_plottitle(filekey, det, "Calibration Curve"; additiional_type=string(e_type)), juleana_logo = juleana_logo)
         end
-        plot!(p, thickness_scaling = 1.5, legend = :topleft,  ylabel = "Energy (a.u.)")
-        plot!(plot_title=get_plottitle(filekey, _channel2detector(data, channel), " Calibration Curve"; additiional_type=string(e_type)), plot_titlelocation=(0.5,0.3), plot_titlefontsize=7)
-        pname = plt_folder * _get_pltfilename(data, filekey, channel, Symbol("calibration_curve_$(e_type)"))
-        savefig(p, pname)
-        @info "Save calibration curve plot to $(pname)"
-
+        Makie.current_axis().titlesize = 17
+        save(pname_calib, fig_calib)
+        @info "Save calibration curve plot to $(pname_calib)"
+    
         # resolution curve 
         f_cal_widths(x) = report_calib.f_fit(x) .* report_calib.e_unit .- first(report_calib.par)
         gamma_names_fwhm_fit = [p for p in gamma_names if !(p in Symbol.(ecal_config.fwhm_fit_excluded_peaks))]
@@ -121,15 +128,14 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
         # plot resolution curve
         fwhm_notfit =  f_cal_widths.([result_fit[p].fwhm for p in gamma_names if !(p in gamma_names_fwhm_fit)])
         pp_notfit = [gamma_lines_dict[p] for p in gamma_names if !(p in gamma_names_fwhm_fit)]
-        if isempty(fwhm_notfit)
-            p = plot(report_fwhm)
+        pname_fwhm = plt_folder * _get_pltfilename(data, filekey, channel, Symbol("fwhm_$(e_type)"))
+        fig_fwhm = if isempty(fwhm_notfit)
+            LegendMakie.lplot(report_fwhm, title = get_plottitle(filekey, det, "FWHM"; additiional_type=string(e_type)), juleana_logo = juleana_logo)
         else
-            p = plot(report_fwhm, additional_pts=(peaks = pp_notfit, fwhm = fwhm_notfit))
+            LegendMakie.lplot(report_fwhm, additional_pts=(peaks = pp_notfit, fwhm = fwhm_notfit), title = get_plottitle(filekey, det, "FWHM"; additiional_type=string(e_type)), juleana_logo = juleana_logo)
         end 
-        plot!(p, thickness_scaling = 1.5, xticks = 0:500:3000, legend = :bottomright, xlabel = "Energy (keV)", right_margin = 3mm)
-        plot!(plot_title=get_plottitle(filekey, _channel2detector(data, channel), "FWHM"; additiional_type=string(e_type)), plot_titlelocation=(0.5,0.3), plot_titlefontsize=8)
-        pname = plt_folder * _get_pltfilename(data, filekey, channel, Symbol("fwhm_$(e_type)"))
-        savefig(p, pname)
+        save(pname_fwhm, fig_fwhm)
+        @info "Save FWHM plot to $(pname_fwhm)"
 
         # calibrate best fit values using energy calibration curve 
         f_cal_pos(x) = report_calib.f_fit(x) .* report_calib.e_unit

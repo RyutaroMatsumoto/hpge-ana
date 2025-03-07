@@ -25,14 +25,10 @@ function process_decaytime(data::LegendData, period::DataPeriod, run::DataRun, c
     result, report = fit_single_trunc_gauss(decay_times, cuts_τ)
     
     # plot 
-    p = Plots.plot(report, size = (600, 500), legend = :topright, xlabel = "Decay time (µs)", fillcolor = :deepskyblue2, color = :darkorange, dpi = 200)
-    plot!(p, xguidefontsize = 16, yguidefontsize = 16, xtickfontsize = 12, ytickfontsize = 12, legendfontsize = 10,
-                legendforegroundcolor = :silver)
-    Plots.plot!(p, xlabel = " ", xtickfontsize = 1, bottom_margin = -6mm, ylims = (0, ylims()[2]+0.25*ylims()[2]), subplot = 1)
     filekey = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])[1]
-    title!(p, get_plottitle(filekey, det, "Decay Time Distribution"),  subplot=1, titlefontsize = 12)
-    savelfig(savefig, p, data, filekey, channel, :decay_time)
-    @info "Save sanity plot to $(LegendDataManagement.LDMUtils.get_pltfilename(data, filekey, channel, :decay_time))"
+    p = LegendMakie.lplot(report, figsize = (600, 430), titlesize = 12, title = get_plottitle(filekey, det, "Decay Time Distribution"), juleana_logo = false, xlabel = "Decay time ($(unit(decay_times[1])))")
+    Makie.current_axis().titlesize = 17;
+    savelfig(LegendMakie.lsavefig, p, data, filekey, channel, :decay_time)
 
     @info "Found decay time at $(round(u"µs", result.µ, digits=2)) for channel $channel / det $det"
     result_pz = (τ = result.μ, fit = result)

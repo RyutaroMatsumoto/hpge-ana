@@ -59,17 +59,26 @@ function process_filteropt(data::LegendData, period::DataPeriod, run::DataRun, c
         # STEP 1: rise-time optimization --> min. baseline noise after filtering 
         if rt_opt_mode == :bl_noise 
             result_rt, report_rt = filteropt_rt_optimization_blnoise(filter_type, wvfs, dsp_config, τ_pz; ft = def_ft)
-            Plots_theme()
+           
+            # Plots_theme()
             rt_inter = range(ustrip.(report_rt.enc_grid_rt[1]), stop = ustrip(maximum(report_rt.enc_grid_rt[findall(isfinite.(report_rt.enc))])), step = 0.05); 
-            p = plot(rt_inter, report_rt.f_interp.(rt_inter), color = :deepskyblue2, linewidth = 3, linestyle = :solid, label = "Interpolation")
-            Plots.scatter!(ustrip.(collect(report_rt.enc_grid_rt)), report_rt.enc, 
-                size = (600, 400), dpi = 150, 
-                ms = 4, color = :black, markerstrokecolor = :black,
-                xlabel = "Rise time ($(unit(report_rt.rt)))", ylabel = "Noise (a.u.)", 
-                title = "Noise sweep ($filter_type), $period-$run-$channel, $peak peak \n" * @sprintf("fixed ft = %.2f %s, optimal rt = %.1f %s", ustrip(def_ft), unit(def_ft), ustrip(report_rt.rt), unit(report_rt.rt)),
-                label = "Data",
-                legend = :top)
-            Plots.xlims!(ustrip.(extrema(report_rt.enc_grid_rt))[1] - 0.2, ustrip.(extrema(report_rt.enc_grid_rt))[2] + 0.2)
+            p = Figure()
+            ax = Axis(p[1, 1], 
+                xlabel = "Rise time ($(unit(report_rt.rt)))", ylabel = "Noise (a.u.)",
+                limits = ((ustrip.(extrema(report_rt.enc_grid_rt))[1] - 0.2, ustrip.(extrema(report_rt.enc_grid_rt))[2] + 0.2), (nothing, nothing)),
+                title = "Noise sweep ($filter_type), $period-$run-$channel, $peak peak \n" * @sprintf("fixed ft = %.2f %s, optimal rt = %.1f %s", ustrip(def_ft), unit(def_ft), ustrip(report_rt.rt), unit(report_rt.rt)), )
+            lines!(ax, rt_inter, report_rt.f_interp.(rt_inter), color = :deepskyblue2, linewidth = 3, linestyle = :solid, label = "Interpolation")
+            scatter!(ax, ustrip.(collect(report_rt.enc_grid_rt)), report_rt.enc,  color = :black, label = "Data")
+            # p = Plots.plot(rt_inter, report_rt.f_interp.(rt_inter), color = :deepskyblue2, linewidth = 3, linestyle = :solid, label = "Interpolation")
+        #    scatter!(ax, ustrip.(collect(report_rt.enc_grid_rt)), report_rt.enc, 
+        #         size = (600, 400), dpi = 150, 
+        #         ms = 4, color = :black, markerstrokecolor = :black,
+        #         xlabel = "Rise time ($(unit(report_rt.rt)))", ylabel = "Noise (a.u.)", 
+        #         title = "Noise sweep ($filter_type), $period-$run-$channel, $peak peak \n" * @sprintf("fixed ft = %.2f %s, optimal rt = %.1f %s", ustrip(def_ft), unit(def_ft), ustrip(report_rt.rt), unit(report_rt.rt)),
+        #         label = "Data",
+        #         legend = :top)
+            # Plots.xlims!(ustrip.(extrema(report_rt.enc_grid_rt))[1] - 0.2, ustrip.(extrema(report_rt.enc_grid_rt))[2] + 0.2)
+            axislegend()
             pname = plt_folder * split(LegendDataManagement.LDMUtils.get_pltfilename(data, filekeys[1], channel, Symbol("noise_sweep_$(filter_type)_blnoise")),"/")[end]
             d = LegendDataManagement.LDMUtils.get_pltfolder(data, filekeys[1], Symbol("noise_sweep_$(filter_type)_blnoise"))
             ifelse(isempty(readdir(d)), rm(d), nothing )
@@ -81,32 +90,27 @@ function process_filteropt(data::LegendData, period::DataPeriod, run::DataRun, c
             enc_min, enc_max = _quantile_truncfit(enc_grid; qmin = 0.02, qmax = 0.98)
             e_grid_rt   = getproperty(dsp_config, Symbol("e_grid_rt_$(filter_type)"))
             result_rt, report_rt = fit_enc_sigmas(enc_grid, e_grid_rt, enc_min, enc_max, round(Int,size(enc_grid)[2]/5), 0.1)
-            @info "Found optimal rise-time: $(result_rt.rt) at fixed ft = $def_ft"
-            p = Plots.plot(report_rt)
-            title!(p, get_plottitle(filekey, det, "Noise Sweep"; additiional_type=string(filter_type)))
+            @info "Found optimal rise-time: $(result_rt.rt) at fixed ft = $def_ft" 
+            p = LegendMakie.lplot(report_rt, title = get_plottitle(filekeys[1], det, "Noise Sweep"; additiional_type=string(filter_type)))
             pname = plt_folder * split(LegendDataManagement.LDMUtils.get_pltfilename(data, filekeys[1], channel, Symbol("noise_sweep_$(filter_type)_pickoff")),"/")[end]
             d = LegendDataManagement.LDMUtils.get_pltfolder(data, filekeys[1], Symbol("noise_sweep_$(filter_type)_pickoff"))
             ifelse(isempty(readdir(d)), rm(d), nothing )
         end 
-        savefig(p, pname)
+        save(pname, p)
+      
+        # savefig(p, pname)
         @info "Save sanity plot to $pname"
-
         # 2. flat top time optimixation 
         e_grid_ft   = getproperty(dsp_config, Symbol("e_grid_ft_$(filter_type)"))
         e_grid = getfield(Main, Symbol("dsp_$(filter_type)_ft_optimization"))(wvfs, dsp_config, τ_pz, mvalue(result_rt.rt))
         e_min, e_max = _quantile_truncfit(e_grid; qmin = 0.02, qmax = 0.98)
         result_ft, report_ft = fit_fwhm_ft(e_grid, e_grid_ft, result_rt.rt,  e_min, e_max, fwhm_rel_cut_fit; peak = data_peak.gamma_line[1])
         @info "Found optimal flattop-time: $(result_ft.ft) with FWHM $(round(u"keV", result_ft.min_fwhm, digits=2))"
-
-        p = plot(report_ft, legendfontsize = 13, xlabel = "Flat-top time (µs)", ylabel = "FWHM $peak (keV)")
-        ymin = ifelse(mvalue(ustrip(result_ft.min_fwhm)) - 0.2 < 0, 0, mvalue(ustrip(result_ft.min_fwhm)) - 1)
-        ymax = maximum(mvalue.(ustrip.(report_ft.fwhm))) + 0.2
-        ylims!(ymin, ymax)
-        title!(get_plottitle(filekey, det, "$peak FT Scan"; additiional_type=string(filter_type)))
+        p = LegendMakie.lplot(report_ft, title = get_plottitle(filekey, det, "$peak FT Scan"; additiional_type=string(filter_type)), juleana_logo = false)
         pname_ft = plt_folder * split(LegendDataManagement.LDMUtils.get_pltfilename(data, filekeys[1], channel, Symbol("fwhm_ft_scan_$(filter_type)")),"/")[end]
         d = LegendDataManagement.LDMUtils.get_pltfolder(data, filekeys[1], Symbol("fwhm_ft_scan_$(filter_type)"))
         ifelse(isempty(readdir(d)), rm(d), nothing )
-        savefig(p, pname_ft)
+        save(pname_ft, p)
         @info "Save sanity plot to $pname_ft"
 
         # return result for this filter type
