@@ -24,16 +24,34 @@ function process_qualitycuts(data::LegendData, period::DataPeriod, run::DataRun,
     dsp_par = Table(read_ldata(data, :jldsp, category, period, run, channel))
 
     # calculate quality cuts. defined in src/apply_qc.jl
-     qc = apply_qc(dsp_par, qc_config)
+    qc = apply_qc(dsp_par, qc_config)
 
     # add event number and timestamp
     qc[:timestamp] = dsp_par.timestamp
     qc[:eventnumber] = dsp_par.eventnumber
 
-    # save results 
+    # save results to pars 
     result_qc = PropDict(Dict("$channel" => qc))
     writelprops(data.par.rpars.qc[period], run, result_qc)
     @info "Saved pars to disk"
 
+    # add qcflag to dsp tier. 
+    filekeys = search_disk(FileKey, data.tier[:jldsp, category , period, run])
+    dsp_folder =  data.tier[DataTier(:jldsp), category , period, run] * "/"
+    for fk in filekeys
+        fname = dsp_folder .* string(fk) .* "-tier_jldsp.lh5"
+        h5open(fname, "r+") do f
+            if haskey(f, "$channel/jldsp/qc")
+                delete_object(f, "$channel/jldsp/qc")
+                @debug "remove old qc values in $fname"
+            end
+        end
+        eventnumbers_fk = read_ldata(:eventnumber, asic, :jldsp, fk, channel);
+        qc_indices = findall(x -> x in eventnumbers_fk, qc.eventnumber)
+        fdsp = lh5open(fname, "cw")
+        fdsp["$channel/jldsp/qc"] = qc.wvf_keep.all[qc_indices]
+        close(fdsp)
+       @debug "add qc to dsp file for $fk"
+    end 
     return qc 
 end
