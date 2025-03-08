@@ -45,23 +45,39 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
     fit_funcs = Symbol.(ecal_config[Symbol("$(source)_fit_func")])
     gamma_lines_dict = Dict(gamma_names .=> gamma_lines)
 
-    # read quality cuts from pars
-    qc = data.par.rpars.qc[period][run][channel]
-
+    # load plot folder and detector
+    filekey = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])[1]
+    det = _channel2detector(data, channel)
+    plt_folder = LegendDataManagement.LDMUtils.get_pltfolder(data, filekey, :energy_calibration) * "/"
+    
     # read dsp parameters
     dsp_pars = Table(read_ldata(data, :jldsp, category, period, run, channel);)
-    filekey = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])[1]
-    fs = 12
-    det = _channel2detector(data, channel)
+ 
+    # load charge-trapping correction, if needed
+    @debug "Loaded CTC parameters"
+    pars_ctc = if any(endswith.(string.(e_types), "_ctc"))
+        get_values(data.par.rpars.ctc[period, run, channel])
+    else 
+        NaN 
+    end 
+
     function _energy_calibration(e_type::Symbol)
         if !reprocess && haskey(data.par.rpars.ecal[period, run, channel], e_type)
             @info "Load existing calibration pars for $(e_type)"
             return NamedTuple(data.par.rpars.ecal[period, run, channel][e_type])
         end
-        plt_folder = LegendDataManagement.LDMUtils.get_pltfolder(data, filekey, :energy_calibration) * "/"
-        # select energy filter and apply qc
-        e_uncal = getproperty(dsp_pars, Symbol("$e_type"))[findall(qc.wvf_keep.all)]
-        e_uncal_func = "$e_type"
+      
+        # load uncalibrated energies after qc and apply ctc if needed
+        e_type_name = Symbol(split(string(e_type), "_ctc")[1])
+        e_uncal = getproperty(dsp_pars, e_type_name)[dsp_pars.qc]
+        if endswith(string(e_type), "_ctc")
+            qdrift = e_uncal = getproperty(dsp_pars, :qdrift)[dsp_pars.qc]
+            @debug "Apply CT correction for $e_type"
+            e_uncal_func = pars_ctc[e_type_name].func
+            e_uncal = ljl_propfunc(e_uncal_func).(Table(NamedTuple{(e_type_name, :qdrift)}((e_uncal, qdrift))))
+        else
+            e_uncal_func = "$e_type"
+        end
 
         # do simple calibration and plot 
         result_simple, report_simple = simple_calibration(e_uncal, gamma_lines , left_window_sizes, right_window_sizes,; 

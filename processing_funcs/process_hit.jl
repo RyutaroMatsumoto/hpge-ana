@@ -26,8 +26,7 @@ function process_hit(data::LegendData, period::DataPeriod, run::DataRun, categor
         return
     end 
 
-    # load quality cuts and energy calibration
-    qc = data.par.rpars.qc[period][run][channel]
+    # load energy calibration
     ecal_pd = data.par.rpars.ecal[period, run, channel]
 
     for f in eachindex(filekeys)
@@ -58,8 +57,7 @@ function process_hit(data::LegendData, period::DataPeriod, run::DataRun, categor
         end
         fhit["$channel/jlhit/eventnumber"] = dsp_pars.eventnumber
         fhit["$channel/jlhit/timestamp"] = dsp_pars.timestamp
-        qc_indices = findall(x -> x in dsp_pars.eventnumber, qc.eventnumber )
-        fhit["$channel/jlhit/qc"] = qc.wvf_keep.all[qc_indices]
+        fhit["$channel/jlhit/qc"] = dsp_pars.qc
         close(fhit)
         println("hit processing done for $filekey")
     end
