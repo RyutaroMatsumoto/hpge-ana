@@ -78,7 +78,7 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
             _, peakpos = RadiationSpectra.peakfinder(h_peaksearch, σ= ecal_config.peakfinder_σ, backgroundRemove=true, threshold = ecal_config.peakfinder_threshold)
         catch e
             @warn "peakfinder failed - use larger window. julia error message: $e"
-             h_peaksearch = fit(Histogram, X, 0:bin_width:(peak_max*1.5)) # histogram for peak search
+             h_peaksearch = fit(Histogram, X, peak_min:bin_width:(peak_max*1.5)) # histogram for peak search
              _, peakpos = RadiationSpectra.peakfinder(h_peaksearch, σ= ecal_config.peakfinder_σ, backgroundRemove=true, threshold = ecal_config.peakfinder_threshold)
         end 
         if length(peakpos) !== length(peaks)
@@ -149,8 +149,10 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
 
         if period >= DataPeriod(3)
             xunit = "ADC"
+            xformatter = X -> map(x -> "$(Int(x))", X)
         else
             xunit = "V"
+            xformatter = X -> map(x -> "$(round(x, digits = 2))", X)
         end
 
         for fk in filekeys
@@ -159,7 +161,7 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
             end 
             rep = result_peaksearch[Symbol(fk)]
             fig = Figure()
-            ax = Axis(fig[1, 1], xlabel = "Energy ($xunit)", ylabel = "Counts", title = get_plottitle(fk, _channel2detector(data, channel), "peak split"), limits = ((nothing, nothing), (0, nothing)))
+            ax = Axis(fig[1, 1], xlabel = "Energy ($xunit)", ylabel = "Counts", xtickformat = xformatter, title = get_plottitle(fk, _channel2detector(data, channel), "peak split"), limits = ((nothing, nothing), (0, nothing)))
             Makie.stephist!(ax,rep.e_simplecal ./ rep.cal_simple, bins = rep.hist_bins  )
             Makie.hist!(ax, rep.e_simplecal ./ rep.cal_simple, bins = rep.hist_bins) 
             vlines!(ax, rep.peakpos, color = :red2, label =  "peakfinder result", alpha = 0.7, linestyle = :dash, linewidth = 2.0)
