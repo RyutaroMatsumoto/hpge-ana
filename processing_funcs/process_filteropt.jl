@@ -68,7 +68,7 @@ function process_filteropt(data::LegendData, period::DataPeriod, run::DataRun, c
                 limits = ((ustrip.(extrema(report_rt.enc_grid_rt))[1] - 0.2, ustrip.(extrema(report_rt.enc_grid_rt))[2] + 0.2), (nothing, nothing)),
                 title = "Noise sweep ($filter_type), $period-$run-$channel, $peak peak \n" * @sprintf("fixed ft = %.2f %s, optimal rt = %.1f %s", ustrip(def_ft), unit(def_ft), ustrip(report_rt.rt), unit(report_rt.rt)), )
             lines!(ax, rt_inter, report_rt.f_interp.(rt_inter), color = :deepskyblue2, linewidth = 3, linestyle = :solid, label = "Interpolation")
-            scatter!(ax, ustrip.(collect(report_rt.enc_grid_rt)), report_rt.enc,  color = :black, label = "Data")
+            Makie.scatter!(ax, ustrip.(collect(report_rt.enc_grid_rt)), report_rt.enc,  color = :black, label = "Data")
             # p = Plots.plot(rt_inter, report_rt.f_interp.(rt_inter), color = :deepskyblue2, linewidth = 3, linestyle = :solid, label = "Interpolation")
         #    scatter!(ax, ustrip.(collect(report_rt.enc_grid_rt)), report_rt.enc, 
         #         size = (600, 400), dpi = 150, 

@@ -97,8 +97,8 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
             fep_guess = report_simple.peak_guess,
             peakhists = report_simple.peakhists,
             peakstats = report_simple.peakstats)
-        fig_simple = LegendMakie.lplot(report_simple_alt, title = get_plottitle(filekey, det, "Simple Calibration"; additiional_type=string(e_type)), cal = true, juleana_logo = juleana_logo)
-        Makie.current_axis().titlesize = 16;
+        fig_simple = LegendMakie.lplot(report_simple_alt, titlesize = 16,  title = get_plottitle(filekey, det, "Simple Calibration"; additiional_type=string(e_type)), cal = true, juleana_logo = juleana_logo)
+        # Makie.current_axis().titlesize = 16;
         [delete!(leg) for leg in fig_simple.content if leg isa Legend]
         vl = vlines!([report_simple.peak_guess * ustrip(report_simple.c)], color = :red2, label = "Peak Guess", alpha = 0.5, linewidth = 3)
         axislegend(Makie.current_axis(), [vl], ["Peak Guess"], position = :lt)
@@ -125,12 +125,7 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
         μ_notfit =  [result_fit[p].centroid for p in gamma_names if !(p in gamma_names_cal_fit)]
         pp_notfit = [gamma_lines_dict[p] for p in gamma_names if !(p in gamma_names_cal_fit)]
         pname_calib = plt_folder * _get_pltfilename(data, filekey, channel, Symbol("calibration_curve_$(e_type)"))
-        fig_calib = if isempty(μ_notfit)
-            LegendMakie.lplot(report_calib, xerrscaling=100, title = get_plottitle(filekey, det, "Calibration Curve"; additiional_type=string(e_type)), juleana_logo = juleana_logo)
-        else
-            LegendMakie.lplot(report_calib, xerrscaling=100, additional_pts=(μ = μ_notfit, peaks = pp_notfit), title = get_plottitle(filekey, det, "Calibration Curve"; additiional_type=string(e_type)), juleana_logo = juleana_logo)
-        end
-        Makie.current_axis().titlesize = 17
+        fig_calib = LegendMakie.lplot(report_calib, xerrscaling=100, additional_pts=(μ = μ_notfit, peaks = pp_notfit), titlesize = 17, title = get_plottitle(filekey, det, "Calibration Curve"; additiional_type=string(e_type)), juleana_logo = juleana_logo)
         save(pname_calib, fig_calib)
         @info "Save calibration curve plot to $(pname_calib)"
     
@@ -145,11 +140,7 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
         fwhm_notfit =  f_cal_widths.([result_fit[p].fwhm for p in gamma_names if !(p in gamma_names_fwhm_fit)])
         pp_notfit = [gamma_lines_dict[p] for p in gamma_names if !(p in gamma_names_fwhm_fit)]
         pname_fwhm = plt_folder * _get_pltfilename(data, filekey, channel, Symbol("fwhm_$(e_type)"))
-        fig_fwhm = if isempty(fwhm_notfit)
-            LegendMakie.lplot(report_fwhm, title = get_plottitle(filekey, det, "FWHM"; additiional_type=string(e_type)), juleana_logo = juleana_logo)
-        else
-            LegendMakie.lplot(report_fwhm, additional_pts=(peaks = pp_notfit, fwhm = fwhm_notfit), title = get_plottitle(filekey, det, "FWHM"; additiional_type=string(e_type)), juleana_logo = juleana_logo)
-        end 
+        fig_fwhm =  LegendMakie.lplot(report_fwhm, additional_pts=(peaks = pp_notfit, fwhm = fwhm_notfit), titlesize = 17, title = get_plottitle(filekey, det, "FWHM"; additiional_type=string(e_type)), juleana_logo = juleana_logo)
         save(pname_fwhm, fig_fwhm)
         @info "Save FWHM plot to $(pname_fwhm)"
 
