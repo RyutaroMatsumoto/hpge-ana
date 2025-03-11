@@ -26,8 +26,7 @@ function process_decaytime(data::LegendData, period::DataPeriod, run::DataRun, c
     
     # plot 
     filekey = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])[1]
-    p = LegendMakie.lplot(report, figsize = (600, 430), titlesize = 12, title = get_plottitle(filekey, det, "Decay Time Distribution"), juleana_logo = false, xlabel = "Decay time ($(unit(decay_times[1])))")
-    Makie.current_axis().titlesize = 17;
+    p = LegendMakie.lplot(report, figsize = (600, 430), titlesize = 17, title = get_plottitle(filekey, det, "Decay Time Distribution"), juleana_logo = false, xlabel = "Decay time ($(unit(decay_times[1])))")
     savelfig(LegendMakie.lsavefig, p, data, filekey, channel, :decay_time)
 
     @info "Found decay time at $(round(u"µs", result.µ, digits=2)) for channel $channel / det $det"
