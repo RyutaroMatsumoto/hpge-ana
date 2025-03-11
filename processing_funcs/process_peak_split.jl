@@ -73,14 +73,14 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
         end
 
         # peak search
-        h_uncals = fit(Histogram, X, 0:bin_width:maximum(X)) # histogram over full energy range; stored for plot 
+        h_uncals = StatsBase.fit(Histogram, X, 0:bin_width:maximum(X)) # histogram over full energy range; stored for plot 
         peakpos = []
         try
-            h_peaksearch = fit(Histogram, X, 0:bin_width:peak_max) # histogram for peak search
+            h_peaksearch = StatsBase.fit(Histogram, X, 0:bin_width:peak_max) # histogram for peak search
             _, peakpos = RadiationSpectra.peakfinder(h_peaksearch, σ= ecal_config.peakfinder_σ, backgroundRemove=true, threshold = ecal_config.peakfinder_threshold)
         catch e
             @warn "peakfinder failed - use larger window. julia error message: $e"
-             h_peaksearch = fit(Histogram, X, 0:bin_width:(peak_max*1.5)) # histogram for peak search
+             h_peaksearch = StatsBase.fit(Histogram, X, 0:bin_width:(peak_max*1.5)) # histogram for peak search
              _, peakpos = RadiationSpectra.peakfinder(h_peaksearch, σ= ecal_config.peakfinder_σ, backgroundRemove=true, threshold = ecal_config.peakfinder_threshold)
         end 
         if length(peakpos) !== length(gamma_lines)
