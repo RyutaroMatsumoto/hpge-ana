@@ -1,5 +1,3 @@
-# using Plots 
-# using CairoMakie, LegendPlots
 using LegendSpecFits
 """
     process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId, ecal_config::PropDict, dsp_config::DSPConfig, qc_config::PropDict; reprocess::Bool = false)
@@ -54,14 +52,14 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
         left_window_sizes = ecal_config.co60_left_window_sizes 
         right_window_sizes = ecal_config.co60_right_window_sizes 
     elseif Symbol(ecal_config.source) == :th228
-        gamma_lines =  ecal_config.th228_lines
-        gamma_names =  ecal_config.th228_names
-        left_window_sizes = ecal_config.left_window_sizes 
-        right_window_sizes = ecal_config.right_window_sizes 
+        gamma_lines =  ecal_config.th228_lines[end]
+        gamma_names =  [ecal_config.th228_names[end]]
+        left_window_sizes = ecal_config.th228_left_window_sizes[end]
+        right_window_sizes = ecal_config.th228_right_window_sizes[end]
     end
 
     result_peaksearch = Dict()
-    function _search_peaks(X::Vector{<:Real})
+    function _search_peaks(X::Vector{<:Real}; peaks::Union{<:Quantity, Vector{<:Quantity}} = gamma_lines)
         # binning and peak search windows and histogram settings 
         bin_min = quantile(X, ecal_config.left_bin_quantile)
         bin_max = quantile(X, ecal_config.right_bin_quantile)
@@ -76,19 +74,19 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
         h_uncals = fit(Histogram, X, 0:bin_width:maximum(X)) # histogram over full energy range; stored for plot 
         peakpos = []
         try
-            h_peaksearch = fit(Histogram, X, 0:bin_width:peak_max) # histogram for peak search
+            h_peaksearch = fit(Histogram, X, peak_min:bin_width:peak_max) # histogram for peak search
             _, peakpos = RadiationSpectra.peakfinder(h_peaksearch, σ= ecal_config.peakfinder_σ, backgroundRemove=true, threshold = ecal_config.peakfinder_threshold)
         catch e
             @warn "peakfinder failed - use larger window. julia error message: $e"
              h_peaksearch = fit(Histogram, X, 0:bin_width:(peak_max*1.5)) # histogram for peak search
              _, peakpos = RadiationSpectra.peakfinder(h_peaksearch, σ= ecal_config.peakfinder_σ, backgroundRemove=true, threshold = ecal_config.peakfinder_threshold)
         end 
-        if length(peakpos) !== length(gamma_lines)
-            error("Number of peaks found $(length(peakpos)); expected gamma lines $(length(gamma_lines)) \n you could try to modify peakfinder_threshold and/or peakfinder_σ")
+        if length(peakpos) !== length(peaks)
+            error("Number of peaks found $(length(peakpos)); expected gamma lines $(length(peaks)) \n you could try to modify peakfinder_threshold and/or peakfinder_σ")
         else 
             @info "Found $(length(peakpos)) peaks"
         end 
-        cal_simple = mean(gamma_lines./sort(peakpos))
+        cal_simple = mean(peaks./sort(peakpos))
         e_cal = X .* cal_simple 
         result = (e_simplecal = e_cal, peakpos = peakpos, hist_bins = 0:bin_width:maximum(X), cal_simple = cal_simple)
         return result 
@@ -107,8 +105,8 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
         end
 
         # do peak search
-        result_ps = _search_peaks(e_uncal);
-       
+        result_ps =  _search_peaks(e_uncal; peaks = gamma_lines);
+
         # save results to peakfile 
         wvfs = data_ch.waveform
         eventnumber = data_ch.eventnumber
@@ -162,8 +160,8 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
             rep = result_peaksearch[Symbol(fk)]
             fig = Figure()
             ax = Axis(fig[1, 1], xlabel = "Energy ($xunit)", ylabel = "Counts", title = get_plottitle(fk, _channel2detector(data, channel), "peak split"), limits = ((nothing, nothing), (0, nothing)))
-            stephist!(ax,rep.e_simplecal ./ rep.cal_simple, bins = rep.hist_bins  )
-            hist!(ax, rep.e_simplecal ./ rep.cal_simple, bins = rep.hist_bins) 
+            Makie.stephist!(ax,rep.e_simplecal ./ rep.cal_simple, bins = rep.hist_bins  )
+            Makie.hist!(ax, rep.e_simplecal ./ rep.cal_simple, bins = rep.hist_bins) 
             vlines!(ax, rep.peakpos, color = :red2, label =  "peakfinder result", alpha = 0.7, linestyle = :dash, linewidth = 2.0)
             axislegend()
             fig  
