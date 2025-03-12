@@ -4,7 +4,7 @@ using LegendSpecFits
     process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; kwargs...)
 Create peak files containting only waveforms from peaks in the calibration spectrum.
 1. Read raw data
-2. Find peaks in the calibration spectrum using rough energy estimate `data_ch.daqenergy`
+2. Find peaks in the calibration spectrum using rough energy estimate `data_fk.daqenergy`
 3. Do simple DSP for peaks only 
 4. apply quality cuts based on simple DSP
 5. Save waveforms after QC to peak files
@@ -58,7 +58,7 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
         right_window_sizes = ecal_config.th228_right_window_sizes[end]
     end
 
-    result_peaksearch = Dict()
+    # result_peaksearch = Dict()
     function _search_peaks(X::Vector{<:Real}; peaks::Union{<:Quantity, Vector{<:Quantity}} = gamma_lines)
         # binning and peak search windows and histogram settings 
         bin_min = quantile(X, ecal_config.left_bin_quantile)
@@ -71,7 +71,6 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
         end
 
         # peak search
-        h_uncals = fit(Histogram, X, 0:bin_width:maximum(X)) # histogram over full energy range; stored for plot 
         peakpos = []
         try
             h_peaksearch = fit(Histogram, X, peak_min:bin_width:peak_max) # histogram for peak search
@@ -84,7 +83,7 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
         if length(peakpos) !== length(peaks)
             error("Number of peaks found $(length(peakpos)); expected gamma lines $(length(peaks)) \n you could try to modify peakfinder_threshold and/or peakfinder_σ")
         else 
-            @info "Found $(length(peakpos)) peaks"
+            @info "Found $(length(peakpos)) peak(s) at $(peakpos)"
         end 
         cal_simple = mean(peaks./sort(peakpos))
         e_cal = X .* cal_simple 
@@ -92,55 +91,16 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
         return result 
     end
 
-    for f in eachindex(filekeys) 
-        filekey = filekeys[f]
-        peak_file = peak_files[f]
-
-        # read raw data (waveform tier) from file 
-        data_ch = read_ldata(data, DataTier(:raw), filekey, channel)
-        e_uncal = filter(x -> x >= qc_config.e_trap.min , data_ch.daqenergy)
-        if isempty(e_uncal)
-            @warn "No energy values >= $(qc_config.e_trap.min) found for $filekey - skip"
-            continue
-        end
-
-        # do peak search
-        result_ps =  _search_peaks(e_uncal; peaks = gamma_lines);
-
-        # save results to peakfile 
-        wvfs = data_ch.waveform
-        eventnumber = data_ch.eventnumber
-        timestamp = data_ch.timestamp
-        
-        # save
-        fid = lh5open(peak_file, "w") 
-        for i in eachindex(gamma_lines)
-            peakIdx = findall((gamma_lines[i] - left_window_sizes[i]) .<= result_ps.e_simplecal .< (gamma_lines[i] + right_window_sizes[i]))
-            # do simple dsp. only for peaks. 
-            dsp_par = simple_dsp_qc(Table(waveform = wvfs[peakIdx]), dsp_config)
-            qc_cuts = apply_qc(dsp_par, qc_config)
-            qc_flag = qc_cuts.wvf_keep.all
-            qc_idx = findall(qc_flag)
-            qc_surv = qc_cuts.qc_surv.all
-            fid["$channel/jlpeaks/$(gamma_names[i])/waveform"] = wvfs[peakIdx][qc_idx]
-            fid["$channel/jlpeaks/$(gamma_names[i])/daqenergy"] = e_uncal[peakIdx][qc_idx]
-            fid["$channel/jlpeaks/$(gamma_names[i])/e_simplecal"] = result_ps.e_simplecal[peakIdx][qc_idx]
-            fid["$channel/jlpeaks/$(gamma_names[i])/eventnumber"] = eventnumber[peakIdx][qc_idx]
-            fid["$channel/jlpeaks/$(gamma_names[i])/timestamp"] = timestamp[peakIdx][qc_idx]
-            fid["$channel/jlpeaks/$(gamma_names[i])/gamma_line"] = fill(gamma_lines[i], length(qc_idx))
-            fid["$channel/jlpeaks/$(gamma_names[i])/qc_flag"] = qc_flag[qc_idx]
-            fid["$channel/jlpeaks/$(gamma_names[i])/qc_surv"] = fill(qc_surv, length(qc_idx))
-            for par in columnnames(dsp_par)
-                fid["$channel/jlpeaks/$(gamma_names[i])/$par"]  = getproperty(dsp_par, par)
-            end
-        end
-        println("peak file processing done for $filekey")
-        close(fid)
-
-        result_peaksearch[Symbol(filekey)] = result_ps
+    # do peaksearch on all filekeys 
+    e_uncal =  filter(x-> x >= qc_config.e_trap.min, read_ldata(:daqenergy, asic, DataTier(:raw), filekeys, channel));
+    if isempty(e_uncal)
+         @error "No energy values >= $(qc_config.e_trap.min) found"
     end
-
-    if plotHist == true 
+    result_ps =  _search_peaks(e_uncal; peaks = gamma_lines);  # do peak search
+    @info "peak search done"
+    
+    # apply simple calibration to all filekeys  
+   if plotHist == true 
         plt_folder = LegendDataManagement.LDMUtils.get_pltfolder(data, filekeys[1], :peak_split) * "/"
         if !ispath(plt_folder)
             mkpath(plt_folder)
@@ -155,23 +115,65 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
             xformatter = X -> map(x -> "$(round(x, digits = 2))", X)
         end
 
-        for fk in filekeys
-            if !haskey(result_peaksearch, Symbol(fk))
-                continue
-            end 
-            rep = result_peaksearch[Symbol(fk)]
-            fig = Figure()
-            ax = Axis(fig[1, 1], xlabel = "Energy ($xunit)", ylabel = "Counts", xtickformat = xformatter, title = get_plottitle(fk, _channel2detector(data, channel), "peak split"), limits = ((nothing, nothing), (0, nothing)))
-            Makie.stephist!(ax,rep.e_simplecal ./ rep.cal_simple, bins = rep.hist_bins  )
-            Makie.hist!(ax, rep.e_simplecal ./ rep.cal_simple, bins = rep.hist_bins) 
-            vlines!(ax, rep.peakpos, color = :red2, label =  "peakfinder result", alpha = 0.7, linestyle = :dash, linewidth = 2.0)
-            axislegend()
-            fig  
-            pname = plt_folder * "peak_split_$fk.png"
-            save(pname, fig)
-        end 
+        fig = Figure()
+        ax = Axis(fig[1, 1], xlabel = "Energy ($xunit)", ylabel = "Counts", xtickformat = xformatter, title = get_plottitle(filekeys[1], _channel2detector(data, channel), "peak split"), limits = ((nothing, nothing), (0, nothing)))
+        Makie.stephist!(ax,result_ps.e_simplecal ./ result_ps.cal_simple, bins = result_ps.hist_bins  )
+        Makie.hist!(ax, result_ps.e_simplecal ./ result_ps.cal_simple, bins = result_ps.hist_bins) 
+        vlines!(ax, result_ps.peakpos, color = :red2, label =  "peakfinder result", alpha = 0.7, linestyle = :dash, linewidth = 2.0)
+        axislegend()
+        fig  
+        pname = plt_folder * "peak_split.png"
+        save(pname, fig)
     end  
-   return result_peaksearch
+
+    for f in eachindex(filekeys) 
+        filekey = filekeys[f]
+        peak_file = peak_files[f]
+
+        # read raw data (waveform tier) from file 
+        data_fk = read_ldata(data, DataTier(:raw), filekey, channel)
+        e_uncal = filter(x -> x >= qc_config.e_trap.min , data_fk.daqenergy)
+        if isempty(e_uncal)
+            @warn "No energy values >= $(qc_config.e_trap.min) found for $filekey - skip"
+            continue
+        end
+
+        # # do peak search
+        # result_ps =  _search_peaks(e_uncal; peaks = gamma_lines);
+        e_simplecal = e_uncal .* result_ps.cal_simple
+
+        # save results to peakfile 
+        wvfs = data_fk.waveform
+        eventnumber = data_fk.eventnumber
+        timestamp = data_fk.timestamp
+        
+        # save
+       
+        fid = lh5open(peak_file, "w") 
+        for i in eachindex(gamma_lines)
+            peakIdx = findall((gamma_lines[i] - left_window_sizes[i]) .<= e_simplecal .< (gamma_lines[i] + right_window_sizes[i]))
+            # do simple dsp. only for peaks. 
+            dsp_par = simple_dsp_qc(Table(waveform = wvfs[peakIdx]), dsp_config)
+            qc_cuts = apply_qc(dsp_par, qc_config)
+            qc_flag = qc_cuts.wvf_keep.all
+            qc_idx = findall(qc_flag)
+            qc_surv = qc_cuts.qc_surv.all
+            fid["$channel/jlpeaks/$(gamma_names[i])/waveform"] = wvfs[peakIdx][qc_idx]
+            fid["$channel/jlpeaks/$(gamma_names[i])/daqenergy"] = e_uncal[peakIdx][qc_idx]
+            fid["$channel/jlpeaks/$(gamma_names[i])/e_simplecal"] = e_simplecal[peakIdx][qc_idx]
+            fid["$channel/jlpeaks/$(gamma_names[i])/eventnumber"] = eventnumber[peakIdx][qc_idx]
+            fid["$channel/jlpeaks/$(gamma_names[i])/timestamp"] = timestamp[peakIdx][qc_idx]
+            fid["$channel/jlpeaks/$(gamma_names[i])/gamma_line"] = fill(gamma_lines[i], length(qc_idx))
+            fid["$channel/jlpeaks/$(gamma_names[i])/qc_flag"] = qc_flag[qc_idx]
+            fid["$channel/jlpeaks/$(gamma_names[i])/qc_surv"] = fill(qc_surv, length(qc_idx))
+            for par in columnnames(dsp_par)
+                fid["$channel/jlpeaks/$(gamma_names[i])/$par"]  = getproperty(dsp_par, par)
+            end
+        end
+        println("peak file processing done for $filekey")
+        close(fid)
+    end
+
 end
 
 function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId; kwargs...)
