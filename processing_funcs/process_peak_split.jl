@@ -82,10 +82,14 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
              _, peakpos = RadiationSpectra.peakfinder(h_peaksearch, σ= ecal_config.peakfinder_σ, backgroundRemove=true, threshold = ecal_config.peakfinder_threshold)
         end 
         if length(peakpos) !== length(peaks)
-            error("Number of peaks found $(length(peakpos)); expected gamma lines $(length(peaks)) \n you could try to modify peakfinder_threshold and/or peakfinder_σ")
-        else 
+            @warn "Number of peaks found $(length(peakpos)); expected gamma lines $(length(peaks)) \n you could try to modify peakfinder_threshold and/or peakfinder_σ"
+        else
             @info "Found $(length(peakpos)) peaks"
-        end 
+            cal_simple = mean(peaks./sort(peakpos))
+            e_cal = X .* cal_simple
+            result = (e_simplecal = e_cal, peakpos = peakpos, hist_bins = 0:bin_width:maximum(X), cal_simple = cal_simple)
+            return result
+        end
         cal_simple = mean(peaks./sort(peakpos))
         e_cal = X .* cal_simple 
         result = (e_simplecal = e_cal, peakpos = peakpos, hist_bins = 0:bin_width:maximum(X), cal_simple = cal_simple)
@@ -101,7 +105,7 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
         e_uncal = filter(x -> x >= qc_config.e_trap.min , data_ch.daqenergy)
         if isempty(e_uncal)
             @warn "No energy values >= $(qc_config.e_trap.min) found for $filekey - skip"
-            continue
+        else
         end
 
         # do peak search
