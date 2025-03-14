@@ -135,7 +135,7 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
         e_uncal = filter(x -> x >= qc_config.e_trap.min , data_fk.daqenergy)
         if isempty(e_uncal)
             @warn "No energy values >= $(qc_config.e_trap.min) found for $filekey - skip"
-        else
+            continue
         end
 
         # # do peak search
