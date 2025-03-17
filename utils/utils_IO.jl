@@ -263,8 +263,9 @@ convert csv files from Skutek digitizer "FemtoDAQ Vireo" to lh5 files
 - `csv_folder::String` folder where the csv files are located (optinal). if not defined use the default folder
 ### kwargs
 - `timestep::Quantity` time step of the waveforms.  default is 0.01µs --> 100 MHz sampling. 
+- chmode::Symbol = :diff: mode of the digitizer. :diff for differential mode, :pulser for pulser mode (work in progress)
 """
-function skutek_csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId, csv_folder::String; timestep::Quantity = 0.01u"µs")
+function skutek_csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId, csv_folder::String; timestep::Quantity = 0.01u"µs", chmode::Symbol = :diff)
    # create folder to save lh5 files
     h5folder = data.tier[DataTier(:raw), category, period, run] * "/"
     if !ispath(h5folder)
@@ -284,7 +285,7 @@ function skutek_csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, c
     timestamp_evt_start = Int64(CSV.read(files_csv[1], DataFrame; delim='\t', comment = "#", header = false)[!,1][1])
     eventnumber_max = 0 # to make eventnumber unique and increasing for all files in a run 
 
-    function _skutek_csv_to_lh5(filename::String, n_max::Int)
+    function _skutek_csv_to_lh5(filename::String, n_max::Int, chmode::Symbol)
         # read file and rename columns for better readability 
         f = CSV.read(filename, DataFrame; delim='\t',  comment = "#", header = false) 
         nchannel = size(f,2) - 2
@@ -295,16 +296,20 @@ function skutek_csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, c
         # The timestamp per waveform is given in units of clock cycles since the last reset of the FPGA. 
         timestamp_rel = ustrip(uconvert(u"s",timestep)).* (Vector(Int64.(f.timestamp)) .- timestamp_evt_start)
         timestamp_unix = timestamp_abs_unix .+ round.(Int64,timestamp_rel)
+        nsamples = length(channel1[1])
+        times = 0.0u"µs":timestep:((nsamples - 1)*timestep)
 
         # Read channels 
         channel1 = map(x -> Int32.(x), JSON.parse.(f.ch1))
         channel2 = map(x -> Int32.(x), JSON.parse.(f.ch2))
-        ch_diff = channel1 .- channel2
-
-        # convert to waveforms 
-        nsamples = length(channel1[1])
-        times = 0.0u"µs":timestep:((nsamples - 1)*timestep)
-        wvfs = ArrayOfRDWaveforms([RDWaveform(t, signal) for (t, signal) in zip(fill(times, length(channel1)), ch_diff)])
+        if chmode == :diff
+            ch_diff = channel1 .- channel2
+            # convert to waveforms 
+            wvfs = ArrayOfRDWaveforms([RDWaveform(t, signal) for (t, signal) in zip(fill(times, length(channel1)), ch_diff)])
+        elseif chmode == :pulser
+            wvfs = ArrayOfRDWaveforms([RDWaveform(t, signal) for (t, signal) in zip(fill(times, length(channel1)), channel1)])
+            pulser = ArrayOfRDWaveforms([RDWaveform(t, signal) for (t, signal) in zip(fill(times, length(channel2)), channel2)])
+        end 
 
         # save to lh5 files 
         filekey = string(FileKey(data.name, period, run, category, Timestamp(timestamp_unix[1])))
@@ -317,6 +322,9 @@ function skutek_csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, c
         fid["$channel/raw/eventnumber"]  = eventnumber
         fid["$channel/raw/timestamp"]  = timestamp_unix 
         fid["$channel/raw/baseline"] = fill(NaN, length(wvfs)) # not available in csv files, but needed for compatibility with LEGEND functions
+        if chmode == :pulser
+            fid["$channel/raw/pulser"]  = pulser
+        end
         @info "saved $(length(wvfs)) waveforms in .lh5 files with filekey: $filekey"
         close(fid)
 
@@ -327,7 +335,7 @@ function skutek_csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, c
         if i ==1 
             global eventnumber_max = 0
         end
-        local n_max =  _skutek_csv_to_lh5(files_csv[i], eventnumber_max)
+        local n_max =  _skutek_csv_to_lh5(files_csv[i], eventnumber_max, chmode)
         global eventnumber_max = n_max 
     end
 end
