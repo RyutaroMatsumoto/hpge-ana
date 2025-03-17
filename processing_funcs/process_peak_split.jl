@@ -54,8 +54,8 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
     elseif Symbol(ecal_config.source) == :th228
         gamma_lines =  ecal_config.th228_lines[end]
         gamma_names =  [ecal_config.th228_names[end]]
-        left_window_sizes = ecal_config.th228_left_window_sizes[end]
-        right_window_sizes = ecal_config.th228_right_window_sizes[end]
+        left_window_sizes = 1.5 * ecal_config.th228_left_window_sizes[end]
+        right_window_sizes = 1.5 * ecal_config.th228_right_window_sizes[end] 
     end
 
     # result_peaksearch = Dict()
@@ -81,7 +81,7 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
              _, peakpos = RadiationSpectra.peakfinder(h_peaksearch, σ= ecal_config.peakfinder_σ, backgroundRemove=true, threshold = ecal_config.peakfinder_threshold)
         end 
         if length(peakpos) !== length(peaks)
-            error("Number of peaks found $(length(peakpos)); expected gamma lines $(length(peaks)) \n you could try to modify peakfinder_threshold and/or peakfinder_σ")
+            error("Number of peaks found $(length(peakpos)) ($peakpos); expected gamma lines $(length(peaks)) \n you could try to modify peakfinder_threshold and/or peakfinder_σ")
         else 
             @info "Found $(length(peakpos)) peak(s) at $(peakpos)"
         end 
