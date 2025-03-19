@@ -296,12 +296,13 @@ function skutek_csv_to_lh5(data::LegendData, period::DataPeriod, run::DataRun, c
         # The timestamp per waveform is given in units of clock cycles since the last reset of the FPGA. 
         timestamp_rel = ustrip(uconvert(u"s",timestep)).* (Vector(Int64.(f.timestamp)) .- timestamp_evt_start)
         timestamp_unix = timestamp_abs_unix .+ round.(Int64,timestamp_rel)
-        nsamples = length(channel1[1])
-        times = 0.0u"µs":timestep:((nsamples - 1)*timestep)
-
+       
         # Read channels 
         channel1 = map(x -> Int32.(x), JSON.parse.(f.ch1))
         channel2 = map(x -> Int32.(x), JSON.parse.(f.ch2))
+        nsamples = length(channel1[1])
+        times = 0.0u"µs":timestep:((nsamples - 1)*timestep)
+
         if chmode == :diff
             ch_diff = channel1 .- channel2
             # convert to waveforms 

@@ -23,7 +23,7 @@ Optional:
 - `filter_types::Vector{Symbol}`: filter types to optimize for
 """
 function process_filteropt(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId, dsp_config::DSPConfig, τ_pz::Quantity{T}, peak::Symbol; 
-                rt_opt_mode::Symbol = :bl_noise, reprocess::Bool = false, filter_types::Vector{Symbol} = [:trap, :cusp, :zac], fwhm_rel_cut_fit::T = 0.1) where T<:Real 
+                rt_opt_mode::Symbol = :bl_noise, reprocess::Bool = false, filter_types::Vector{Symbol} = [:trap, :cusp, :zac], fwhm_rel_cut_fit::T = 0.1, ft_qmin::T = 0.02, ft_qmax::T = 0.98) where T<:Real 
     det = _channel2detector(data, channel)
     @info "Optimize filter for period $period, run $run, channel $channel /det $det - $filter_types"
 
@@ -103,7 +103,7 @@ function process_filteropt(data::LegendData, period::DataPeriod, run::DataRun, c
         # 2. flat top time optimixation 
         e_grid_ft   = getproperty(dsp_config, Symbol("e_grid_ft_$(filter_type)"))
         e_grid = getfield(Main, Symbol("dsp_$(filter_type)_ft_optimization"))(wvfs, dsp_config, τ_pz, mvalue(result_rt.rt))
-        e_min, e_max = _quantile_truncfit(e_grid; qmin = 0.02, qmax = 0.98)
+        e_min, e_max = _quantile_truncfit(e_grid; qmin = ft_qmin, qmax = ft_qmax)
         result_ft, report_ft = fit_fwhm_ft(e_grid, e_grid_ft, result_rt.rt,  e_min, e_max, fwhm_rel_cut_fit; peak = data_peak.gamma_line[1])
         @info "Found optimal flattop-time: $(result_ft.ft) with FWHM $(round(u"keV", result_ft.min_fwhm, digits=2))"
         p = LegendMakie.lplot(report_ft, title = get_plottitle(filekey, det, "$peak FT Scan"; additiional_type=string(filter_type)), juleana_logo = false)

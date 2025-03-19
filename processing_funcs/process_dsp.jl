@@ -22,7 +22,7 @@ OUTPUTS:
     - print the progress
     - print the completion message
 """
-function process_dsp(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId, dsp_config::DSPConfig, τ_pz::Quantity{<:Real}, pars_filter::PropDict; reprocess::Bool = false )  
+function process_dsp(data::LegendData, period::DataPeriod, run::DataRun, category::Union{Symbol, DataCategory}, channel::ChannelId, dsp_config::DSPConfig, τ_pz::Quantity{<:Real}, pars_filter::PropDict; reprocess::Bool = false)  
 
     @info "Start DSP processing for period $period, run $run, channel $channel"
     filekeys = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])
@@ -45,6 +45,10 @@ function process_dsp(data::LegendData, period::DataPeriod, run::DataRun, categor
         data_raw = read_ldata(data, DataTier(:raw), filekey, channel)
         dsp_par = simple_dsp(Table(data_raw), dsp_config; τ_pz = τ_pz, pars_filter = pars_filter)
        
+        if hasproperty(data_raw, :pulser)
+            dsp_par_pulser = simple_dsp_pulser(Table(data_raw), dsp_config; τ_pz = 0.0u"µs", pars_filter = pars_filter)
+        end
+
         # save dsp results
         if !ispath(dsp_folder)
             mkpath(dsp_folder)
@@ -53,6 +57,11 @@ function process_dsp(data::LegendData, period::DataPeriod, run::DataRun, categor
         fdsp = lh5open(dsp_file, "w")
         for par in columnnames(dsp_par)
             fdsp["$channel/jldsp/$par"]  = getproperty(dsp_par, par)
+        end
+        if hasproperty(data_raw, :pulser)
+            for par in columnnames(dsp_par_pulser)
+                fdsp["$channel/jldsp/$par"]  = getproperty(dsp_par_pulser, par)
+            end
         end
         fdsp["$channel/jldsp/eventnumber"] = data_raw.eventnumber
         fdsp["$channel/jldsp/timestamp"] = data_raw.timestamp

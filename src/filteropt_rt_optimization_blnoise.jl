@@ -74,7 +74,7 @@ function filteropt_rt_optimization_blnoise(filter_type::Symbol, wvfs::ArrayOfRDW
     end
     result, report = let enc = noise[findall(isfinite.(noise))], rt = ustrip.(collect(grid_rt))[findall(isfinite.(noise))]
         if length(enc) >= 4
-            f_interp = interpolate(rt, enc, BSplineOrder(4))
+            f_interp = BSplineKit.interpolate(rt, enc, BSplineOrder(4))
         else
             f_interp = LinearInterpolation(rt, enc)
         end
