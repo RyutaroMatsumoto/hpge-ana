@@ -34,7 +34,7 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
     if source == :th228
         calib_type = :th228
     elseif source == :co60
-        calib_type = :co60
+        calib_type = :gamma
     else
         error("Unknown source $(source)")
     end
