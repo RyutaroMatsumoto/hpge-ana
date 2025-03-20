@@ -26,15 +26,22 @@ function process_decaytime(data::LegendData, period::DataPeriod, run::DataRun, c
     
     # plot 
     filekey = search_disk(FileKey, data.tier[DataTier(:raw), category , period, run])[1]
-    p = LegendMakie.lplot(report, figsize = (600, 430), titlesize = 17, title = get_plottitle(filekey, det, "Decay Time Distribution"), juleana_logo = false, xlabel = "Decay time ($(unit(decay_times[1])))")
-    savelfig(LegendMakie.lsavefig, p, data, filekey, channel, :decay_time)
+    fig = Figure()
+    LegendMakie.lplot!(report, figsize = (600, 430), titlesize = 17, title = get_plottitle(filekey, det_ged, "Decay Time Distribution"), juleana_logo = false, xlabel = "Decay time ($(unit(decay_times[1])))")
+    if maximum(abs.(extrema(report.gof.residuals_norm))) > 5.0
+        ylim = ceil(Int, maximum(abs.(extrema(report.gof.residuals_norm))))
+        ax2 = [ax for ax in fig.content if typeof(ax) <: Makie.Axis][2]
+        Makie.ylims!(ax2, -ylim, ylim)
+        fig
+    end
+    savelfig(LegendMakie.lsavefig, fig, data, filekey, channel, :decay_time)
 
     @info "Found decay time at $(round(u"µs", result.µ, digits=2)) for channel $channel / det $det"
     result_pz = (τ = result.μ, fit = result)
     writelprops(data.par.rpars.pz[period], run, PropDict("$channel" => result_pz))
     @info "Saved pars to disk"
-    display(p)
-    return p 
+    display(fig)
+    return fig
 end
 # export process_decaytime
 

@@ -72,18 +72,42 @@ function process_peak_split(data::LegendData, period::DataPeriod, run::DataRun, 
 
         # peak search
         peakpos = []
-        try
-            h_peaksearch = fit(Histogram, X, peak_min:bin_width:peak_max) # histogram for peak search
-            _, peakpos = RadiationSpectra.peakfinder(h_peaksearch, σ= ecal_config.peakfinder_σ, backgroundRemove=true, threshold = ecal_config.peakfinder_threshold)
-        catch e
-            @warn "peakfinder failed - use larger window. julia error message: $e"
-             h_peaksearch = fit(Histogram, X, peak_min:bin_width:(peak_max*1.5)) # histogram for peak search
-             _, peakpos = RadiationSpectra.peakfinder(h_peaksearch, σ= ecal_config.peakfinder_σ, backgroundRemove=true, threshold = ecal_config.peakfinder_threshold)
+        function _peakfinder(p_min::T, p_max::T) where T <: Real
+            try 
+                h_peaksearch = fit(Histogram, e_uncal, p_min:bin_width:p_max) # histogram for peak search
+                _, peakpos = RadiationSpectra.peakfinder(h_peaksearch, σ= ecal_config.peakfinder_σ, backgroundRemove=true, threshold = ecal_config.peakfinder_threshold)
+                @info "Found $(length(peakpos)) peak(s) at $(peakpos)"
+                return peakpos
+            catch e
+                @info "peakfinder failed: $e"
+                return NaN
+            end
+        end
+        
+        peakpos = _peakfinder(peak_min, peak_max)
+        if peakpos == NaN
+            @info "try larger peak window"
+            peakpos = _peakfinder(peak_min, 1.5*peak_max)  
+        elseif length(peakpos) > length(peaks) 
+            @info "too many peaks found - try smaller peak window"
+            for i in 0.1:0.1:0.9
+                peakpos = _peakfinder((1+i)*peak_min, (1-i)*peak_max)
+                if length(peakpos) == length(peaks) 
+                    break 
+                end 
+            end 
+        elseif length(peakpos) < length(peaks)
+          @info "too few peaks found - try larger peak window"
+            for i in 0.1:0.1:0.9
+                peakpos = _peakfinder((1-i)*peak_min, (1+i)*peak_max)
+                if length(peakpos) == length(peaks) 
+                    break 
+                end 
+            end 
         end 
-        if length(peakpos) !== length(peaks)
+
+        if (length(peakpos) !== length(peaks)) || peakpos == NaN
             error("Number of peaks found $(length(peakpos)) ($peakpos); expected gamma lines $(length(peaks)) \n you could try to modify peakfinder_threshold and/or peakfinder_σ")
-        else 
-            @info "Found $(length(peakpos)) peak(s) at $(peakpos)"
         end 
         cal_simple = mean(peaks./sort(peakpos))
         e_cal = X .* cal_simple 
