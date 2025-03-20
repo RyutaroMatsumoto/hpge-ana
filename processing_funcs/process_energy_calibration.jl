@@ -111,12 +111,12 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
         result_fit, report_fit = fit_peaks(result_simple.peakhists, result_simple.peakstats, gamma_names; 
                                     e_unit=result_simple.unit, calib_type=:th228, fit_func = fit_funcs, m_cal_simple=m_cal_simple)
         pname = plt_folder * _get_pltfilename(data, filekey, channel, Symbol("peak_fits_$(e_type)"))
-        fig_fit = LegendMakie.lplot(report_fit, figsize = (600, 400*length(report_fit)), title = get_plottitle(filekey, det, "Peak Fits"; additiional_type=string(e_type)), juleana_logo = juleana_logo)
+        fig_fit = LegendMakie.lplot(report_fit, figsize = (600, 400*length(report_fit)), title = get_plottitle(filekey, det, "Peak Fits"; additiional_type=string(e_type)), juleana_logo = juleana_logo, ylims_res = (-10, 10))
         save(pname, fig_fit)
         @info "Save peak fits plot to $(pname)"
 
         # calibration curve 
-        gamma_names_cal_fit = [p for p in gamma_names if !(p in Symbol.(ecal_config.cal_fit_excluded_peaks))]
+        gamma_names_cal_fit = [p for p in gamma_names if !(p in ecal_config.cal_fit_excluded_peaks)]
         μ_fit =  [result_fit[p].centroid for p in gamma_names_cal_fit]
         pp_fit = [gamma_lines_dict[p] for p in gamma_names_cal_fit]
         result_calib, report_calib = fit_calibration(ecal_config.cal_pol_order, μ_fit, pp_fit; e_expression=e_uncal_func)
@@ -131,7 +131,7 @@ function process_energy_calibration(data::LegendData, period::DataPeriod, run::D
     
         # resolution curve 
         f_cal_widths(x) = report_calib.f_fit(x) .* report_calib.e_unit .- first(report_calib.par)
-        gamma_names_fwhm_fit = [p for p in gamma_names if !(p in Symbol.(ecal_config.fwhm_fit_excluded_peaks))]
+        gamma_names_fwhm_fit = [p for p in gamma_names if !(p in ecal_config.fwhm_fit_excluded_peaks)]
         fwhm_fit = f_cal_widths.([result_fit[p].fwhm for p in gamma_names_fwhm_fit])
         pp_fit = [gamma_lines_dict[p] for p in gamma_names_fwhm_fit] 
         result_fwhm, report_fwhm = fit_fwhm(ecal_config.fwhm_pol_order, pp_fit, fwhm_fit; e_type_cal=Symbol("$(e_type)_cal"), e_expression=e_uncal_func, uncertainty=true)

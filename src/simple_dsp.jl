@@ -186,4 +186,84 @@ function simple_dsp_qc(data::Q, dsp_config::DSPConfig; τ_pz::Quantity{T} = 0.0u
         )
 end 
 
+""" 
 
+"""
+function simple_dsp_pulser(data::Q, dsp_config::DSPConfig; τ_pz::Quantity{T} = 0.0u"µs", pars_filter::PropDict) where {Q <: Table, T<:Real}
+    if !hasproperty(data, :pulser)
+        error("data does not contain pulser waveforms")
+    end 
+
+    wvfs = data.pulser
+
+    #### get filter parameters from config. if otimized values are not found; use default.  
+    trap_rt, trap_ft = mvalue.(get_fltpars(pars_filter, :trap, dsp_config))
+
+    ################## ACTUAL WAVEFORM FILTERING AND RECONSTRUCTION, ANALYSIS BEGINS HERE ##################
+    bl_stats = signalstats.(wvfs, leftendpoint(dsp_config.bl_window), rightendpoint(dsp_config.bl_window))
+
+    # substract baseline from waveforms
+    wvfs = shift_waveform.(wvfs, -bl_stats.mean)
+   
+    # tail analysis 
+    tail_stats = tailstats.(wvfs, leftendpoint(dsp_config.tail_window), rightendpoint(dsp_config.tail_window))
+
+    # get raw wvf maximum/minimum
+    wvf_max = maximum.(wvfs.signal)
+    wvf_min = minimum.(wvfs.signal)
+    
+    # deconvolute waveform: pole-zero correction. Use pre-defined tau from decay time analysis OR median decay time for all waveforms
+    if τ_pz == 0.0u"µs"
+        τ_pz = median(filter!(isfinite, tail_stats.τ))
+    end
+    deconv_flt = InvCRFilter(τ_pz)
+    wvfs = deconv_flt.(wvfs)
+  
+    # get tail mean, std and slope
+    pz_stats = signalstats.(wvfs, leftendpoint(dsp_config.tail_window), rightendpoint(dsp_config.tail_window))
+
+    # t0 determination
+    t0 = get_t0(wvfs, dsp_config.t0_threshold; flt_pars=dsp_config.kwargs_pars.t0_flt_pars, mintot=dsp_config.kwargs_pars.t0_mintot)
+    
+    # if all waveforms are saturated set threshold to 1.0 to avoid numerical problems
+    # replace!(wvf_max, zero(wvf_max[1]) => one(wvf_max[1]))
+    
+    # get threshold points in rise
+    t10 = get_threshold(wvfs, wvf_max .* 0.1; mintot=dsp_config.kwargs_pars.tx_mintot)
+    t20 = get_threshold(wvfs, wvf_max .* 0.2; mintot=dsp_config.kwargs_pars.tx_mintot)
+    t50 = get_threshold(wvfs, wvf_max .* 0.5; mintot=dsp_config.kwargs_pars.tx_mintot)
+    t80 = get_threshold(wvfs, wvf_max .* 0.8; mintot=dsp_config.kwargs_pars.tx_mintot)
+    t90 = get_threshold(wvfs, wvf_max .* 0.9; mintot=dsp_config.kwargs_pars.tx_mintot)
+    t99 = get_threshold(wvfs, wvf_max .* 0.99; mintot=dsp_config.kwargs_pars.tx_mintot)
+        
+    drift_time = uconvert.(u"ns", t90 - t0)
+    
+    # robust energy reconstruction with long, middle and short rise and flat-top times
+    uflt_10410 = TrapezoidalChargeFilter(10u"µs", 4u"µs")
+    e_10410  = maximum.((uflt_10410.(wvfs)).signal)
+
+    uflt_535 = TrapezoidalChargeFilter(5u"µs", 3u"µs")
+    e_535  = maximum.((uflt_535.(wvfs)).signal)
+    
+    uflt_313 = TrapezoidalChargeFilter(3u"µs", 1u"µs")
+    e_313  = maximum.((uflt_313.(wvfs)).signal)
+    
+    # signal estimator for precise energy reconstruction
+    signal_estimator = SignalEstimator(PolynomialDNI(dsp_config.kwargs_pars.sig_interpolation_order, dsp_config.kwargs_pars.sig_interpolation_length))
+    
+    # get trap energy of optimized rise and flat-top time
+    uflt_trap_rtft = TrapezoidalChargeFilter(trap_rt, trap_ft)
+    e_trap = signal_estimator.(uflt_trap_rtft.(wvfs), t50 .+ (trap_rt + trap_ft/2))
+
+    # output Table 
+    # return 
+    Table(pulser_blmean = bl_stats.mean, pulser_blsigma = bl_stats.sigma, pulser_blslope = bl_stats.slope, pulser_bloffset = bl_stats.offset, 
+        pulser_tailmean = pz_stats.mean, pulser_tailsigma = pz_stats.sigma, pulser_tailslope = pz_stats.slope, pulser_tailoffset = pz_stats.offset,
+        pulser_t0 = t0, pulser_t10 = t10, pulser_t20 = t20, pulser_t50 = t50, pulser_t80 = t80, pulser_t90 = t90, pulser_t99 = t99,
+        pulser_drift_time = drift_time,
+        pulser_tail_τ = tail_stats.τ, pulser_tail_mean = tail_stats.mean, pulser_tail_sigma = tail_stats.sigma,
+        pulser_e_max = wvf_max, pulser_e_min = wvf_min,
+        pulser_e_10410 = e_10410, pulser_e_535 = e_535, pulser_e_313 = e_313,
+        pulser_e_trap = e_trap
+        )
+end 
