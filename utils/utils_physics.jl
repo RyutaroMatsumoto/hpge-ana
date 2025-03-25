@@ -41,7 +41,7 @@ function pulser_ADC_to_electrons(ADC::Real, C_pulser::Real; bits::Int = 14,  dyn
     return  (V/gain * C_pulser) / electron_charge  # charge in electrons
 end
 
-function pulser_ADC_to_keV(ADC::Real, C_pulser::Real; bits::Int = 14,  dynamicrange_V::Real = 2.0, gain::Real = 1.0)
-    return  pulser_ADC_to_electrons(ADC, C_pulser; bits = bits, dynamicrange_V = dynamicrange_V, gain = gain) * Ge_Energy_per_eholePair(90) / 1e3
+function pulser_ADC_to_keV(ADC::Real, C_pulser::Real,T::Real; bits::Int = 14,  dynamicrange_V::Real = 2.0, gain::Real = 1.0)
+    return  pulser_ADC_to_electrons(ADC, C_pulser; bits = bits, dynamicrange_V = dynamicrange_V, gain = gain) * Ge_Energy_per_eholePair(T) / 1e3
 end
 
