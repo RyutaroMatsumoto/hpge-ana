@@ -69,7 +69,7 @@ function process_noisesweep(data::LegendData, period::DataPeriod, run::DataRun, 
         axislegend()
         pname = plt_folder * split(LegendDataManagement.LDMUtils.get_pltfilename(data, filekeys[1], channel, Symbol("noise_sweep_$(filter_type)")),"/")[end]
         d = LegendDataManagement.LDMUtils.get_pltfolder(data, filekeys[1], Symbol("noise_sweep_$(filter_type)"))
-        ifelse(isempty(readdir(d)), rm(d), nothing )
+        ifelse(isempty(readdir(d)), rm(d), NamedTuple())
 
         save(pname, p)
         @info "Save sanity plot to $pname"
@@ -82,7 +82,7 @@ function process_noisesweep(data::LegendData, period::DataPeriod, run::DataRun, 
     for filter_type in filter_types
         result_noisesweep_dict[filter_type] =  process_noisesweep_fltr(filter_type)
     end
-    result = PropDict(Dict("$channel" => result_noisesweep_dict))
+    result = PropDict("$channel" => result_noisesweep_dict)
     writelprops(data.par.rpars.noisesweep[period], run, result)
     @info "Saved pars to disk"
 end
